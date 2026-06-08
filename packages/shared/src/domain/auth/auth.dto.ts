@@ -4,8 +4,7 @@ export interface IAuthorizeDto {
 }
 
 export interface IEmailVerifyRequest {
-  email: string;
-  code: string;
+  token: string;
 }
 
 export interface ISignupRequest extends IAuthorizeDto {
