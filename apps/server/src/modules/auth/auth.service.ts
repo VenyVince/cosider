@@ -67,6 +67,84 @@ export class AuthService {
     return hashedToken === storedToken;
   }
 
+  // validate and rotate
+  async rotateRefreshTokens(
+    refreshToken: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+
+    const result = await this.db
+      .select()
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenValue, hashedToken))
+      .limit(1);
+
+    if (!result.length) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const stored = result[0];
+
+    if (stored.userId == null) {
+      await this.db
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(eq(refreshTokens.id, stored.id));
+      throw new UnauthorizedException('Invalid token owner');
+    }
+    const storedUserId = stored.userId;
+
+    // 이미 소진된 토큰으로 재요청 -> 재사용 공격 의심, 해당 유저 전체 세션 폐기
+    if (stored.revokedAt !== null) {
+      await this.revokeRefreshToken(storedUserId);
+      await this.removeAccessToken(storedUserId);
+      throw new UnauthorizedException('Token reuse detected. All sessions revoked.');
+    }
+
+    // 단순 만료
+    if (stored.expiresAt < new Date()) {
+      await this.db
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(eq(refreshTokens.id, stored.id));
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    // 정상 -> 기존 RT revoke (트랜잭션, 동시요청 대비 조건부 update)
+    // TODO: RT revoke + 새 RT insert를 하나의 DB 트랜잭션으로 묶을지 검토.
+    // 현재는 revoke 성공 후 storeRefreshToken(insert) 실패 시 RT가 폐기된 채로 새 RT가 없는 상태가 될 수 있음 (팀 컨벤션 논의 필요)
+    const updated = await this.db.transaction(async (tx) => {
+      return tx
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(refreshTokens.id, stored.id), isNull(refreshTokens.revokedAt)))
+        .returning({ id: refreshTokens.id });
+    });
+
+    if (!updated.length) {
+      // 동시 요청에 의해 이미 소진됨 -> 재사용 시도로 취급
+      // TODO: 동시 요청(중복 refresh)으로 인한 정상 케이스도 재사용 공격으로
+      //       오판되어 전체 세션이 폐기될 수 있음. grace period 등 대안 검토 필요
+      await this.revokeRefreshToken(storedUserId);
+      await this.removeAccessToken(storedUserId);
+      throw new UnauthorizedException('Token reuse detected. All sessions revoked.');
+    }
+
+    // 새 RT/AT 발급 (storeRefreshToken, storeAccessToken은 기존 메서드 재사용)
+    const payload: JwtPayloadDto = { userId: storedUserId };
+
+    const newAccessToken = await this.generateAccessToken(payload);
+    const newRefreshToken = this.generateRefreshToken();
+
+    await this.storeAccessToken(storedUserId, newAccessToken);
+    await this.storeRefreshToken(storedUserId, newRefreshToken);
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
+
   async validateUser(dto: Signin): Promise<AuthenticatedUser> {
     const result = await this.db
       .select({

@@ -1,10 +1,21 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service';
 import { EmailVerifyRequest, Signin, SignupRequest } from './dto';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
-import type { AuthRequest } from './interface/auth-user.interface';
+import type { IAuthRequest } from './interface/auth-user.interface';
+import type { ICookieRequest } from './interface/cookies.interface';
 // import { OAuthGuard } from '../guards/oauth.guard';
 // import { LogoutGuard} from '../guards/logout.guard;
 // import { RefreshGuard } from '../guards/refresh.guard';
@@ -33,7 +44,10 @@ export class AuthController {
   @Post('sign-out')
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  async signout(@Req() req: AuthRequest, @Res({ passthrough: true }) res: Response): Promise<void> {
+  async signout(
+    @Req() req: IAuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
     await this.authService.signout(req.user.userId);
 
     res.clearCookie('accessToken');
@@ -62,8 +76,29 @@ export class AuthController {
   }
 
   @Post('refresh')
-  // @UseGuards(RefreshGuard)
-  refresh(@Req() req: Request): void {
-    console.log(req);
+  @HttpCode(200)
+  async refresh(
+    // TODO: 사용자 입력값을 모두 DTO로 받는 컨벤션이라면 ICookieRequest 및 IAuthRequest를 DTO 기반 검증으로 변경 검토
+    //       또한 dto에 refreshtoken @IsNotEmpty 사용
+    @Req() req: ICookieRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      throw new UnauthorizedException('No refresh token provided');
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await this.authService.rotateRefreshTokens(refreshToken);
+
+    const cookieOptions = {
+      httpOnly: true,
+      samesite: 'lax',
+      secure: false,
+      path: '/',
+    };
+
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', newRefreshToken, cookieOptions);
   }
 }
