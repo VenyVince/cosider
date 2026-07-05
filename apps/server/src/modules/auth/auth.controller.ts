@@ -1,4 +1,16 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
@@ -87,22 +99,23 @@ export class AuthController {
   async oauthCallback(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
+    @Query('code') _code: string,
+    @Query('state') _state: string,
   ): Promise<void> {
     const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
-    try {
-      const user = req.user as OAuthUserPayload;
-      if (!user) {
-        return res.redirect(`${frontendUrl}/login?error=AUTH_FAILED`);
-      }
-
-      const tokens = await this.authService.loginOrRegisterOAuth(user);
-      this.setNewAuthTokens(tokens, res);
-
-      return res.redirect(frontendUrl);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'INTERNAL_SERVER_ERROR';
-      return res.redirect(`${frontendUrl}/login?error=${message}`);
+    const user = req.user as OAuthUserPayload;
+    if (!user) {
+      throw new UnauthorizedException({
+        statusCode: HttpStatus.UNAUTHORIZED,
+        errorCode: 'AUTH_FAILED',
+        message: 'ERR_AUTH_FAILED',
+      });
     }
+
+    const tokens = await this.authService.loginOrRegisterOAuth(user);
+    this.setNewAuthTokens(tokens, res);
+
+    return res.redirect(frontendUrl);
   }
 
   @Post('refresh')
