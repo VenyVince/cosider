@@ -28,7 +28,12 @@ import {
 import { MailService } from '@/common/mail/mail.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import { refreshTokens, userCredentials, users } from '@/database/schema';
-import type { JwtMailVerifyPayload, GeneratedAuthTokens, JwtUserPayload } from '@/types/auth';
+import type {
+  JwtMailVerifyPayload,
+  GeneratedAuthTokens,
+  JwtUserPayload,
+  OAuthUserPayload,
+} from '@/types/auth';
 
 @Injectable()
 export class AuthService {
@@ -302,5 +307,48 @@ export class AuthService {
 
     // 완료되었으므로 redis에서 삭제.
     await this.redis.del(redisKey);
+  }
+
+  public async loginOrRegisterOAuth(profile: OAuthUserPayload): Promise<GeneratedAuthTokens> {
+    const { email, provider, providerId } = profile;
+
+    const existing = await this.userCredentialService.findExistingProvidersByEmail(email);
+
+    if (existing) {
+      const hasProvider = existing.providers.includes(provider);
+      if (hasProvider) {
+        return this.generateAuthTokens({ userId: existing.userId });
+      }
+
+      await this.db.insert(userCredentials).values({
+        userId: existing.userId,
+        provider,
+        providerId,
+        credential: null as unknown as string,
+      });
+
+      return this.generateAuthTokens({ userId: existing.userId });
+    }
+
+    const newUser = await this.db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          email,
+          status: EUserStatus.ACTIVE,
+        })
+        .returning();
+
+      await tx.insert(userCredentials).values({
+        userId: user.id,
+        provider,
+        providerId,
+        credential: null as unknown as string,
+      });
+
+      return user;
+    });
+
+    return this.generateAuthTokens({ userId: newUser.id });
   }
 }

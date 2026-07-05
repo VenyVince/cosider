@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 
 import { AuthService } from './auth.service';
@@ -7,9 +8,14 @@ import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
+import { OAuthGuard } from './guard/oauth.guard';
 import { RefreshGuard } from './guard/refresh.guard';
 
-import type { AuthenticatedUser, GeneratedAuthTokens } from '@/types/auth/auth.type';
+import type {
+  AuthenticatedUser,
+  GeneratedAuthTokens,
+  OAuthUserPayload,
+} from '@/types/auth/auth.type';
 // import { OAuthGuard } from '../guards/oauth.guard';
 // import { LogoutGuard} from '../guards/logout.guard;
 // import { RefreshGuard } from '../guards/refresh.guard';
@@ -24,7 +30,10 @@ export class AuthController {
     path: '/',
   };
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('sign-in')
   @HttpCode(200)
@@ -69,15 +78,31 @@ export class AuthController {
     return this.authService.verifyEmail(dto);
   }
 
-  // provider 추후에 수정.
   @Get('oauth/:provider')
-  // @UseGuards(OAuthGuard)
+  @UseGuards(OAuthGuard)
   oauthLogin(): void {}
 
   @Get('oauth/:provider/callback')
-  // @UseGuards(OAuthGuard)
-  oauthCallback(@Req() req: Request): void {
-    console.log(req);
+  @UseGuards(OAuthGuard)
+  async oauthCallback(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
+    try {
+      const user = req.user as OAuthUserPayload;
+      if (!user) {
+        return res.redirect(`${frontendUrl}/login?error=AUTH_FAILED`);
+      }
+
+      const tokens = await this.authService.loginOrRegisterOAuth(user);
+      this.setNewAuthTokens(tokens, res);
+
+      return res.redirect(frontendUrl);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'INTERNAL_SERVER_ERROR';
+      return res.redirect(`${frontendUrl}/login?error=${message}`);
+    }
   }
 
   @Post('refresh')

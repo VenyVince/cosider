@@ -21,3 +21,9 @@ export interface ExistingProviders {
   status: EUserStatus;
   providers: EUserCredentialProvider[];
 }
+
+export type OAuthUserPayload = {
+  email: string;
+  provider: EUserCredentialProvider;
+  providerId: string;
+};
