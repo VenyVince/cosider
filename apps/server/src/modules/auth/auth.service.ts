@@ -322,14 +322,15 @@ export class AuthService {
         return this.generateAuthTokens({ userId: existing.userId });
       }
 
-      await this.db.insert(userCredentials).values({
-        userId: existing.userId,
-        provider,
-        providerId,
-        credential: null as unknown as string,
+      throw new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        errorCode: 'REQUIRE_SOCIAL_LINKING',
+        message: 'ERR_REQUIRE_SOCIAL_LINKING',
+        meta: {
+          userId: existing.userId,
+          providers: existing.providers,
+        },
       });
-
-      return this.generateAuthTokens({ userId: existing.userId });
     }
 
     const newUser = await this.db.transaction(async (tx) => {
