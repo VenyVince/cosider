@@ -7,7 +7,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
+import { OAuthGuard } from './guard/oauth.guard';
 import { RefreshGuard } from './guard/refresh.guard';
+import { GoogleOAuthStrategy } from './strategy/google.strategy';
 import { JwtStrategy } from './strategy/jwt.strategy';
 import { UserCredentialService } from './user-credential.service';
 
@@ -32,11 +34,13 @@ import { UserCredentialService } from './user-credential.service';
     UserCredentialService,
     // Passports
     JwtStrategy,
+    GoogleOAuthStrategy,
 
     //Guards
     LocalAuthGuard,
     JwtAuthGuard,
     RefreshGuard,
+    OAuthGuard,
   ],
 })
 export class AuthModule {}
