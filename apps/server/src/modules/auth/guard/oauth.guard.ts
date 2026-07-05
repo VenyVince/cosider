@@ -1,20 +1,20 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 
-interface PassportAuthGuard {
-  type: string;
-}
-
 @Injectable()
-export class OAuthGuard extends AuthGuard('google') {
+export class OAuthGuard implements CanActivate {
   private readonly frontendUrl: string;
+  private readonly guardMap: Record<string, CanActivate>;
 
   constructor(configService: ConfigService) {
-    super();
     this.frontendUrl = configService.getOrThrow<string>('FRONTEND_URL');
+    this.guardMap = {
+      google: new (AuthGuard('google'))(),
+      github: new (AuthGuard('github'))(),
+    };
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
@@ -23,19 +23,18 @@ export class OAuthGuard extends AuthGuard('google') {
     const response = http.getResponse<Response>();
     const provider = request.params.provider;
 
-    if (provider !== 'google' && provider !== 'github') {
+    if (typeof provider !== 'string') {
       response.redirect(`${this.frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
       return false;
     }
 
-    const guard = this as unknown as PassportAuthGuard;
-    const originalType = guard.type;
-    guard.type = provider;
+    const targetGuard = this.guardMap[provider];
 
-    try {
-      return super.canActivate(context);
-    } finally {
-      guard.type = originalType;
+    if (!targetGuard) {
+      response.redirect(`${this.frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
+      return false;
     }
+
+    return targetGuard.canActivate(context);
   }
 }
