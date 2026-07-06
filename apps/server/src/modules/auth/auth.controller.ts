@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -103,19 +104,41 @@ export class AuthController {
     @Query('state') _state: string,
   ): Promise<void> {
     const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
-    const user = req.user as OAuthUserPayload;
-    if (!user) {
-      throw new UnauthorizedException({
-        statusCode: HttpStatus.UNAUTHORIZED,
-        errorCode: 'AUTH_FAILED',
-        message: 'ERR_AUTH_FAILED',
-      });
+
+    try {
+      const user = req.user as OAuthUserPayload;
+      if (!user) {
+        throw new UnauthorizedException({
+          statusCode: HttpStatus.UNAUTHORIZED,
+          errorCode: 'AUTH_FAILED',
+          message: 'ERR_AUTH_FAILED',
+        });
+      }
+
+      const tokens = await this.authService.loginOrRegisterOAuth(user);
+      this.setNewAuthTokens(tokens, res);
+
+      res.redirect(frontendUrl);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        const responseBody = error.getResponse() as {
+          errorCode?: string;
+          meta?: { providers?: string[] };
+        };
+        const errorCode = responseBody.errorCode || 'CONFLICT';
+        const providers = responseBody.meta?.providers?.join(',') || '';
+
+        return res.redirect(`${frontendUrl}/login?error=${errorCode}&providers=${providers}`);
+      }
+
+      if (error instanceof UnauthorizedException) {
+        const responseBody = error.getResponse() as { errorCode?: string };
+        const errorCode = responseBody.errorCode || 'AUTH_FAILED';
+        return res.redirect(`${frontendUrl}/login?error=${errorCode}`);
+      }
+
+      res.redirect(`${frontendUrl}/login?error=AUTH_FAILED`);
     }
-
-    const tokens = await this.authService.loginOrRegisterOAuth(user);
-    this.setNewAuthTokens(tokens, res);
-
-    res.redirect(frontendUrl);
   }
 
   @Post('refresh')
