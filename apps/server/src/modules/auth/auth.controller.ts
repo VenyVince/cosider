@@ -98,7 +98,7 @@ export class AuthController {
   @UseGuards(OAuthGuard)
   async oauthCallback(
     @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
     @Query('code') _code: string,
     @Query('state') _state: string,
   ): Promise<void> {
@@ -115,7 +115,7 @@ export class AuthController {
     const tokens = await this.authService.loginOrRegisterOAuth(user);
     this.setNewAuthTokens(tokens, res);
 
-    return res.redirect(frontendUrl);
+    res.redirect(frontendUrl);
   }
 
   @Post('refresh')
