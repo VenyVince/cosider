@@ -16,19 +16,19 @@ interface IAuthGuardWithOptions extends CanActivate {
   getAuthenticateOptions?: (context: ExecutionContext) => Record<string, unknown>;
 }
 
+const providerGuards: Record<string, CanActivate> = {
+  google: new (AuthGuard('google'))(),
+  github: new (AuthGuard('github'))(),
+};
+
 @Injectable()
 export class OAuthGuard implements CanActivate {
   private readonly frontendUrl: string;
   private readonly isProduction: boolean;
-  private readonly guardMap: Record<string, CanActivate>;
 
   constructor(configService: ConfigService) {
     this.frontendUrl = configService.getOrThrow<string>('FRONTEND_URL');
     this.isProduction = configService.get<string>('NODE_ENV') === 'production';
-    this.guardMap = {
-      google: new (AuthGuard('google'))(),
-      github: new (AuthGuard('github'))(),
-    };
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
@@ -42,7 +42,7 @@ export class OAuthGuard implements CanActivate {
       return true; // 이중 응답 방지
     }
 
-    const targetGuard = this.guardMap[provider];
+    const targetGuard = providerGuards[provider];
 
     if (!targetGuard) {
       response.redirect(`${this.frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
