@@ -12,13 +12,26 @@ import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 
-interface IAuthGuardWithOptions extends CanActivate {
-  getAuthenticateOptions?: (context: ExecutionContext) => Record<string, unknown>;
+interface CustomRequest extends Request {
+  oauthState?: string;
 }
 
+// 클래스 외부에 선언하여 싱글톤으로 가드 인스턴스 유지
 const providerGuards: Record<string, CanActivate> = {
-  google: new (AuthGuard('google'))(),
-  github: new (AuthGuard('github'))(),
+  google: new (class extends AuthGuard('google') {
+    // 싱글톤 상태에서 다중 동시 요청 간 state가 Race Condition을 막기 위해,
+    // 런타임에 메서드를 몽키 패칭하지 않고 Request로부터 state를 동적으로 추출.
+    override getAuthenticateOptions(context: ExecutionContext) {
+      const request = context.switchToHttp().getRequest<CustomRequest>();
+      return { state: request.oauthState };
+    }
+  })(),
+  github: new (class extends AuthGuard('github') {
+    override getAuthenticateOptions(context: ExecutionContext) {
+      const request = context.switchToHttp().getRequest<CustomRequest>();
+      return { state: request.oauthState };
+    }
+  })(),
 };
 
 @Injectable()
@@ -33,7 +46,7 @@ export class OAuthGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
     const http = context.switchToHttp();
-    const request = http.getRequest<Request>();
+    const request = http.getRequest<CustomRequest>();
     const response = http.getResponse<Response>();
     const provider = request.params.provider;
 
@@ -85,9 +98,8 @@ export class OAuthGuard implements CanActivate {
         path: '/',
       });
 
-      // targetGuard의 getAuthenticateOptions를 몽키 패치하여 state 주입
-      const guardWithOptions = targetGuard as IAuthGuardWithOptions;
-      guardWithOptions.getAuthenticateOptions = () => ({ state });
+      // request 객체에 안전하게 state 기록 (싱글톤 간 간섭 방지)
+      request.oauthState = state;
     }
 
     return targetGuard.canActivate(context);
