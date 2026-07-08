@@ -1,12 +1,20 @@
 import { EPriority, ITask } from '@cosider/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { CreateNewTaskRequestDto, TaskResponseDto, UpdateTaskRequestDto } from './dto';
 
 import { DB_CONNECTION } from '@/common/constants';
 import { type DrizzleDB } from '@/database/drizzle.module';
-import { projects, requirementTaskLinks, tasks, workspaces } from '@/database/schema';
+import {
+  projectTaskCounters,
+  projectMembers,
+  projects,
+  requirementTaskLinks,
+  tasks,
+  workspace_members,
+  workspaces,
+} from '@/database/schema';
 
 type DBTaskRowFromITask = Omit<ITask, 'startDate' | 'dueDate' | 'createdAt' | 'updatedAt'> & {
   startDate: Date | null;
@@ -40,16 +48,31 @@ export class TasksService {
     };
   }
 
-  private async findProjectIdOrThrow(workspaceSlug: string, projectKey: string): Promise<string> {
+  private async findProjectIdOrThrow(
+    userId: string,
+    workspaceSlug: string,
+    projectKey: string,
+  ): Promise<string> {
     const [project] = await this.db
       .select({ id: projects.id })
       .from(projects)
       .innerJoin(workspaces, eq(projects.workspaceId, workspaces.id))
-      .where(and(eq(workspaces.slug, workspaceSlug), eq(projects.key, projectKey)))
+      .innerJoin(workspace_members, eq(workspaces.id, workspace_members.workspaceId))
+      .innerJoin(projectMembers, eq(projects.id, projectMembers.projectId))
+      .where(
+        and(
+          eq(workspaces.slug, workspaceSlug),
+          eq(projects.key, projectKey),
+          eq(workspace_members.userId, userId),
+          eq(projectMembers.userId, userId),
+          isNull(workspaces.deletedAt),
+          isNull(projects.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!project) {
-      throw new NotFoundException('Project not found');
+      throw new NotFoundException('Project not found or access denied');
     }
 
     return project.id;
@@ -57,86 +80,86 @@ export class TasksService {
 
   // Task 생성
   async create(
+    userId: string,
     workspaceSlug: string,
     projectKey: string,
     createNewTaskDto: CreateNewTaskRequestDto,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
 
-    const maxRetries = 3;
-    let attempt = 0;
+    return await this.db.transaction(async (tx) => {
+      const [counter] = await tx
+        .select({ lastTaskNumber: projectTaskCounters.lastTaskNumber })
+        .from(projectTaskCounters)
+        .where(eq(projectTaskCounters.projectId, projectId))
+        .limit(1);
 
-    while (attempt < maxRetries) {
-      attempt++;
+      let nextTaskNumber: number;
 
-      try {
-        return await this.db.transaction(async (tx) => {
-          const last = await tx
-            .select()
-            .from(tasks)
-            .where(eq(tasks.projectId, projectId))
-            .orderBy(desc(tasks.taskNumber))
-            .limit(1);
+      if (!counter) {
+        nextTaskNumber = 1;
 
-          const nextTaskNumber = (last[0]?.taskNumber ?? 0) + 1;
-
-          const [inserted] = await tx
-            .insert(tasks)
-            .values({
-              projectId,
-              taskNumber: nextTaskNumber,
-              title: createNewTaskDto.title,
-              description: createNewTaskDto.description ?? null,
-              assigneeId: null,
-              assigneeNickname: null,
-              reporterId: null,
-              reporterNickname: null,
-              linkedDocumentId: createNewTaskDto.linkedDocumentId ?? null,
-              sprintId: createNewTaskDto.sprintId ?? null,
-              status: createNewTaskDto.status,
-              priority: createNewTaskDto.priority ?? EPriority.MID,
-              startDate: createNewTaskDto.startDate ? new Date(createNewTaskDto.startDate) : null,
-              dueDate: createNewTaskDto.dueDate ? new Date(createNewTaskDto.dueDate) : null,
-            })
-            .returning();
-
-          if (!inserted) {
-            throw new Error('Insert failed');
-          }
-
-          if (createNewTaskDto.linkedRequirementIds?.length) {
-            const links = createNewTaskDto.linkedRequirementIds.map((reqId) => ({
-              requirementId: reqId,
-              taskId: inserted.id,
-            }));
-            await tx.insert(requirementTaskLinks).values(links);
-          }
-
-          return this.mapRowToDto(inserted, createNewTaskDto.linkedRequirementIds);
+        await tx.insert(projectTaskCounters).values({
+          projectId,
+          lastTaskNumber: nextTaskNumber,
         });
-      } catch (error: unknown) {
-        const isPgError = (err: unknown): err is { code: string } => {
-          return typeof err === 'object' && err !== null && 'code' in err;
-        };
+      } else {
+        const [updatedCounter] = await tx
+          .update(projectTaskCounters)
+          .set({ lastTaskNumber: sql`${projectTaskCounters.lastTaskNumber} + 1` })
+          .where(eq(projectTaskCounters.projectId, projectId))
+          .returning({ nextTaskNumber: projectTaskCounters.lastTaskNumber });
 
-        if (isPgError(error) && error.code === '23505') {
-          if (attempt === maxRetries) {
-            throw new BadRequestException(
-              'Failed to create task after multiple attempts due to concurrent insertions. Please try again.',
-            );
-          }
-          continue;
+        if (!updatedCounter) {
+          throw new BadRequestException('Failed to update task counter');
         }
-        throw error;
-      }
-    }
 
-    throw new BadRequestException('Failed to create task');
+        nextTaskNumber = updatedCounter.nextTaskNumber;
+      }
+
+      const [inserted] = await tx
+        .insert(tasks)
+        .values({
+          projectId,
+          taskNumber: nextTaskNumber,
+          title: createNewTaskDto.title,
+          description: createNewTaskDto.description ?? null,
+          assigneeId: null,
+          assigneeNickname: null,
+          reporterId: null,
+          reporterNickname: null,
+          linkedDocumentId: createNewTaskDto.linkedDocumentId ?? null,
+          sprintId: createNewTaskDto.sprintId ?? null,
+          status: createNewTaskDto.status,
+          priority: createNewTaskDto.priority ?? EPriority.MID,
+          startDate: createNewTaskDto.startDate ? new Date(createNewTaskDto.startDate) : null,
+          dueDate: createNewTaskDto.dueDate ? new Date(createNewTaskDto.dueDate) : null,
+        })
+        .returning();
+
+      if (!inserted) {
+        throw new BadRequestException('Insert failed');
+      }
+
+      if (createNewTaskDto.linkedRequirementIds?.length) {
+        const links = createNewTaskDto.linkedRequirementIds.map((reqId) => ({
+          requirementId: reqId,
+          taskId: inserted.id,
+        }));
+        await tx.insert(requirementTaskLinks).values(links);
+      }
+
+      return this.mapRowToDto(inserted, createNewTaskDto.linkedRequirementIds);
+    });
   }
 
   // Task 목록 조회
-  async findAll(workspaceSlug: string, projectKey: string): Promise<TaskResponseDto[]> {
-    const projectId = await this.findProjectIdOrThrow(workspaceSlug, projectKey);
+  async findAll(
+    userId: string,
+    workspaceSlug: string,
+    projectKey: string,
+  ): Promise<TaskResponseDto[]> {
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
 
     const rows = await this.db
       .select()
@@ -171,11 +194,12 @@ export class TasksService {
 
   // Task 상세 조회
   async findOne(
+    userId: string,
     workspaceSlug: string,
     projectKey: string,
     taskNumber: number,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
 
     const [row] = await this.db
       .select()
@@ -200,12 +224,13 @@ export class TasksService {
 
   // Task 수정
   async update(
+    userId: string,
     workspaceSlug: string,
     projectKey: string,
     taskNumber: number,
     updateTaskDto: UpdateTaskRequestDto,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
 
     return await this.db.transaction(async (tx) => {
       const [existing] = await tx
@@ -292,8 +317,13 @@ export class TasksService {
   }
 
   // Task 삭제
-  async remove(workspaceSlug: string, projectKey: string, taskNumber: number): Promise<void> {
-    const projectId = await this.findProjectIdOrThrow(workspaceSlug, projectKey);
+  async remove(
+    userId: string,
+    workspaceSlug: string,
+    projectKey: string,
+    taskNumber: number,
+  ): Promise<void> {
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
 
     const [existing] = await this.db
       .select({ id: tasks.id })
