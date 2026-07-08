@@ -2,22 +2,6 @@ import { EPriority } from '../../common';
 
 import { ITask } from './task.interface';
 
-export interface ICreateNewTaskRequest {
-  title: ITask['title'];
-  status: ITask['status'];
-
-  description?: string;
-  assigneeHandle?: string;
-  sprintId?: string;
-  linkedDocumentId?: string;
-  linkedRequirementIds?: string[];
-  priority?: EPriority;
-  startDate?: string;
-  dueDate?: string;
-}
-
-export type IUpdateTaskRequest = Partial<ICreateNewTaskRequest>;
-
 export interface ITaskResponse {
   id: string;
   taskNumber: number;
@@ -36,3 +20,15 @@ export interface ITaskResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ICreateNewTaskRequest
+  extends
+    Pick<ITask, 'title' | 'status'>,
+    Partial<
+      Pick<
+        ITask,
+        'description' | 'sprintId' | 'linkedDocumentId' | 'priority' | 'startDate' | 'dueDate'
+      >
+    > {}
+
+export type IUpdateTaskRequest = Partial<ICreateNewTaskRequest>;
