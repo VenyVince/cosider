@@ -1,6 +1,5 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -10,6 +9,7 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +19,7 @@ import { AuthService } from './auth.service';
 import { CurrentUser, ExtractRefreshToken } from './decorator';
 import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
+import { OAuthExceptionFilter } from './filter/oauth-exception.filter';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
 import { OAuthGuard } from './guard/oauth.guard';
@@ -93,52 +94,32 @@ export class AuthController {
 
   @Get('oauth/:provider')
   @UseGuards(OAuthGuard)
+  @UseFilters(OAuthExceptionFilter)
   oauthLogin(): void {}
 
   @Get('oauth/:provider/callback')
   @UseGuards(OAuthGuard)
+  @UseFilters(OAuthExceptionFilter)
   async oauthCallback(
     @Req() req: Request,
     @Res() res: Response,
     @Query('code') _code: string,
     @Query('state') _state: string,
   ): Promise<void> {
-    const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
-
-    try {
-      const user = req.user as OAuthUserPayload;
-      if (!user) {
-        throw new UnauthorizedException({
-          statusCode: HttpStatus.UNAUTHORIZED,
-          errorCode: 'AUTH_FAILED',
-          message: 'ERR_AUTH_FAILED',
-        });
-      }
-
-      const tokens = await this.authService.loginOrRegisterOAuth(user);
-      this.setNewAuthTokens(tokens, res);
-
-      res.redirect(frontendUrl);
-    } catch (error) {
-      if (error instanceof ConflictException) {
-        const responseBody = error.getResponse() as {
-          errorCode?: string;
-          meta?: { providers?: string[] };
-        };
-        const errorCode = responseBody.errorCode || 'CONFLICT';
-        const providers = responseBody.meta?.providers?.join(',') || '';
-
-        return res.redirect(`${frontendUrl}/login?error=${errorCode}&providers=${providers}`);
-      }
-
-      if (error instanceof UnauthorizedException) {
-        const responseBody = error.getResponse() as { errorCode?: string };
-        const errorCode = responseBody.errorCode || 'AUTH_FAILED';
-        return res.redirect(`${frontendUrl}/login?error=${errorCode}`);
-      }
-
-      res.redirect(`${frontendUrl}/login?error=AUTH_FAILED`);
+    const user = req.user as OAuthUserPayload;
+    if (!user) {
+      throw new UnauthorizedException({
+        statusCode: HttpStatus.UNAUTHORIZED,
+        errorCode: 'AUTH_FAILED',
+        message: 'ERR_AUTH_FAILED',
+      });
     }
+
+    const tokens = await this.authService.loginOrRegisterOAuth(user);
+    this.setNewAuthTokens(tokens, res);
+
+    const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
+    res.redirect(frontendUrl);
   }
 
   @Post('refresh')
