@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 
 import {
+  BadRequestException,
   CanActivate,
   ExecutionContext,
   HttpStatus,
@@ -36,11 +37,9 @@ const providerGuards: Record<string, CanActivate> = {
 
 @Injectable()
 export class OAuthGuard implements CanActivate {
-  private readonly frontendUrl: string;
   private readonly isProduction: boolean;
 
   constructor(configService: ConfigService) {
-    this.frontendUrl = configService.getOrThrow<string>('FRONTEND_URL');
     this.isProduction = configService.get<string>('NODE_ENV') === 'production';
   }
 
@@ -51,15 +50,13 @@ export class OAuthGuard implements CanActivate {
     const provider = request.params.provider;
 
     if (typeof provider !== 'string') {
-      response.redirect(`${this.frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
-      return true; // 이중 응답 방지
+      throw new BadRequestException({ errorCode: 'UNSUPPORTED_PROVIDER' });
     }
 
     const targetGuard = providerGuards[provider];
 
     if (!targetGuard) {
-      response.redirect(`${this.frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
-      return true; // 이중 응답 방지
+      throw new BadRequestException({ errorCode: 'UNSUPPORTED_PROVIDER' });
     }
 
     const path = request.path;
