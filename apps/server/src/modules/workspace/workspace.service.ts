@@ -1,5 +1,6 @@
-import { EWorkspaceStatus, EWorkspaceUserRole } from '@cosider/shared';
+import { EFileRefType, EWorkspaceStatus, EWorkspaceUserRole } from '@cosider/shared';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -19,12 +20,19 @@ import {
 import { canManage, isOwner } from './utils/role.util';
 
 import { DB_CONNECTION } from '@/common/constants';
+import { FileUploadCompletionRequest } from '@/common/file/dto/file-upload-completion-request.dto';
+import { FileUploadRequest } from '@/common/file/dto/file-upload-request.dto';
+import { FileUploadUrlResponse } from '@/common/file/dto/file-upload-url-response.dto';
+import { FilesService } from '@/common/file/files.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import { userProfiles, workspaceMembers, workspaces } from '@/database/schema';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(@Inject(DB_CONNECTION) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DB_CONNECTION) private readonly db: DrizzleDB,
+    private readonly filesService: FilesService,
+  ) {}
 
   async createWorkspace(dto: CreateWorkspaceRequest, ownerId: string): Promise<WorkspaceResponse> {
     // 트랜잭션으로 워크스페이스와 워크스페이스 멤버 등록을 함께 생성
@@ -234,6 +242,13 @@ export class WorkspacesService {
     }
   }
 
+  async requestLogoPresignedUrl(
+    dto: FileUploadRequest,
+    userId: string,
+  ): Promise<FileUploadUrlResponse> {
+    return this.filesService.issueUploadToken(userId, dto);
+  }
+
   // 워크스페이스 멤버 조회 및 권한 체크
   private async findMemberOrThrow(workspaceId: string, userId: string) {
     const [member] = await this.db
@@ -248,5 +263,30 @@ export class WorkspacesService {
     }
 
     return member;
+  }
+
+  async updateWorkspaceLogo(
+    workspaceId: string,
+    dto: FileUploadCompletionRequest,
+    userId: string,
+  ): Promise<void> {
+    await this.findMemberOrThrow(workspaceId, userId);
+
+    if (!dto.uploadToken) {
+      throw new BadRequestException('uploadToken이 필요합니다');
+    }
+
+    const mediaId = await this.filesService.consumeUploadToken(
+      userId,
+      dto.uploadToken,
+      EFileRefType.WORKSPACE,
+    );
+
+    await this.filesService.connectMediaFile(mediaId, workspaceId);
+
+    await this.db
+      .update(workspaces)
+      .set({ logoImageId: mediaId })
+      .where(eq(workspaces.id, workspaceId));
   }
 }
