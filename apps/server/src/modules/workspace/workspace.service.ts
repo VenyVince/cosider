@@ -44,7 +44,7 @@ export class WorkspacesService {
           slug: dto.slug,
           name: dto.name,
           description: dto.description,
-          logoImageId: null, // TODO: uploadToken -> S3 Key 변환 후 교체
+          logoImageId: null,
         })
         .returning()
         .catch((e: { code: string }) => {
@@ -72,7 +72,7 @@ export class WorkspacesService {
       name: workspace.name,
       status: workspace.status,
       description: workspace.description ?? '',
-      logoImageId: '', // TODO: S3 서비스 완성 후 logoImageKey로 PresignedURL 변환 예정
+      logoImageId: workspace.logoImageId,
       createdAt: workspace.createdAt.toISOString(),
       role: EWorkspaceUserRole.OWNER,
     };
@@ -85,7 +85,7 @@ export class WorkspacesService {
         name: workspaces.name,
         status: workspaces.status,
         description: workspaces.description,
-        logoImageId: workspaces.logoImageId, // S3 Key -> URL 변환 필요
+        logoImageId: workspaces.logoImageId,
         createdAt: workspaces.createdAt,
         role: workspaceMembers.role,
       })
@@ -111,13 +111,13 @@ export class WorkspacesService {
         name: workspaces.name,
         status: workspaces.status,
         description: workspaces.description,
-        logoImageId: workspaces.logoImageId, // S3 Key -> URL 변환 필요
+        logoImageId: workspaces.logoImageId,
         createdAt: workspaces.createdAt,
         role: workspaceMembers.role,
         owner: {
           handle: userProfiles.handle,
           nickname: userProfiles.nickname,
-          profileImageId: userProfiles.profileImageId, // S3 Key -> URL 변환 필요
+          profileImageId: userProfiles.profileImageId,
         },
       })
       .from(workspaces)
@@ -134,7 +134,7 @@ export class WorkspacesService {
       name: workspace.name,
       status: workspace.status,
       description: workspace.description ?? '',
-      logoImageId: '', // TODO: S3 서비스 완성 후 logoImageKey로 PresignedURL 변환 예정
+      logoImageId: workspace.logoImageId,
       createdAt: workspace.createdAt.toISOString(),
       role: workspace.role,
       owner: {
@@ -182,7 +182,7 @@ export class WorkspacesService {
       name: updatedWorkspace.name,
       status: updatedWorkspace.status,
       description: updatedWorkspace.description ?? '',
-      logoImageId: '', // TODO: S3 서비스 완성 후 logoImageKey로 PresignedURL 변환 예정
+      logoImageId: updatedWorkspace.logoImageId,
       createdAt: updatedWorkspace.createdAt.toISOString(),
       role: member.role,
     };
