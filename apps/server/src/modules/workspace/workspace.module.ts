@@ -8,8 +8,10 @@ import { WorkspaceMembersService } from './workspace-member.service';
 import { WorkspacesController } from './workspace.controller';
 import { WorkspacesService } from './workspace.service';
 
+import { FilesModule } from '@/common/file/files.module';
+
 @Module({
-  imports: [UserModule],
+  imports: [UserModule, FilesModule],
   controllers: [WorkspacesController, WorkspaceMembersController],
   providers: [WorkspacesService, WorkspaceMembersService, ParseWorkspaceSlugPipe],
   exports: [ParseWorkspaceSlugPipe],
