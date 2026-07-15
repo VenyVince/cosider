@@ -3,7 +3,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { CreateNewTaskRequestDto, TaskResponseDto, UpdateTaskRequestDto } from './dto';
-import { mapTaskRowToDto } from './tasks.mapper';
+import { mapAttachmentRow, mapParticipantRow, mapTaskRowToDto } from './tasks.mapper';
 import type { DBTaskRowFromITask } from './tasks.types';
 
 import { DB_CONNECTION } from '@/common/constants';
@@ -21,16 +21,6 @@ import {
   workspaceMembers,
 } from '@/database/schema';
 
-type TaskParticipantRow = {
-  id: string;
-  email: string;
-  handle: string;
-  nickname: string | null;
-  profileImageId: string | null;
-  updatedAt: Date | null;
-  handleUpdatedAt: Date | null;
-};
-
 @Injectable()
 export class TasksService {
   constructor(@Inject(DB_CONNECTION) private readonly db: DrizzleDB) {}
@@ -47,47 +37,6 @@ export class TasksService {
     };
   }
 
-  private formatRequiredTimestamp(timestamp: Date | null, errorMessage: string): string {
-    if (!timestamp) {
-      throw new NotFoundException(errorMessage);
-    }
-
-    return timestamp.toISOString();
-  }
-
-  private mapParticipantRow(row: TaskParticipantRow): ITaskParticipantResponse {
-    return {
-      id: row.id,
-      email: row.email,
-      handle: row.handle,
-      nickname: row.nickname,
-      profileImageId: row.profileImageId,
-      updatedAt: this.formatRequiredTimestamp(row.updatedAt, 'Participant updatedAt not found'),
-      handleUpdatedAt: this.formatRequiredTimestamp(
-        row.handleUpdatedAt,
-        'Participant handleUpdatedAt not found',
-      ),
-    };
-  }
-
-  private mapAttachmentRow(row: {
-    id: string;
-    fileName: string;
-    mimeType: string;
-    fileSize: number;
-    visibility: IFileMetadata['visibility'];
-    createdAt: Date | null;
-  }): IFileMetadata {
-    return {
-      id: row.id,
-      fileName: row.fileName,
-      mimeType: row.mimeType,
-      fileSize: row.fileSize,
-      visibility: row.visibility,
-      createdAt: this.formatRequiredTimestamp(row.createdAt, 'Attachment createdAt not found'),
-    };
-  }
-
   private async findParticipantByUserIdOrThrow(userId: string): Promise<ITaskParticipantResponse> {
     const [participant] = await this.db
       .select(this.getParticipantSelectFields())
@@ -100,7 +49,7 @@ export class TasksService {
       throw new NotFoundException('USER_NOT_FOUND');
     }
 
-    return this.mapParticipantRow(participant);
+    return mapParticipantRow(participant);
   }
 
   private async findParticipantByHandleOrThrow(handle: string): Promise<ITaskParticipantResponse> {
@@ -115,7 +64,7 @@ export class TasksService {
       throw new NotFoundException('USER_NOT_FOUND');
     }
 
-    return this.mapParticipantRow(participant);
+    return mapParticipantRow(participant);
   }
 
   private async findParticipantsByUserIdsOrThrow(
@@ -131,7 +80,7 @@ export class TasksService {
       .innerJoin(userProfiles, eq(users.id, userProfiles.userId))
       .where(inArray(users.id, userIds));
 
-    return new Map(rows.map((row) => [row.id, this.mapParticipantRow(row)]));
+    return new Map(rows.map((row) => [row.id, mapParticipantRow(row)]));
   }
 
   private async findAttachmentsByTaskId(taskId: string): Promise<IFileMetadata[]> {
@@ -161,7 +110,7 @@ export class TasksService {
     return rows.reduce((acc, row) => {
       const attachments = acc.get(row.taskId) ?? [];
 
-      attachments.push(this.mapAttachmentRow(row));
+      attachments.push(mapAttachmentRow(row));
 
       acc.set(row.taskId, attachments);
       return acc;
