@@ -9,9 +9,12 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 
 import { CurrentUser } from '../auth/decorator';
+import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
+import { ParseWorkspaceSlugPipe } from '../workspace/pipes/parse-workspace-slug.pipe';
 
 import { CreateNewTaskRequestDto, TaskResponseDto, UpdateTaskRequestDto } from './dto';
 import { TasksService } from './tasks.service';
@@ -19,6 +22,7 @@ import { TasksService } from './tasks.service';
 import type { AuthenticatedUser } from '@/types/auth/auth.type';
 
 @Controller('api/v1/workspaces/:workspace_slug/projects/:project_key/tasks')
+@UseGuards(JwtAuthGuard)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
@@ -26,46 +30,46 @@ export class TasksController {
   @Post()
   async create(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('workspace_slug') workspaceSlug: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Param('project_key') projectKey: string,
     @Body() createTaskDto: CreateNewTaskRequestDto,
   ): Promise<TaskResponseDto> {
-    return await this.tasksService.create(user.userId, workspaceSlug, projectKey, createTaskDto);
+    return await this.tasksService.create(user.userId, workspaceId, projectKey, createTaskDto);
   }
 
   // Task 목록 조회
   @Get()
   async findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('workspace_slug') workspaceSlug: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Param('project_key') projectKey: string,
   ): Promise<TaskResponseDto[]> {
-    return await this.tasksService.findAll(user.userId, workspaceSlug, projectKey);
+    return await this.tasksService.findAll(user.userId, workspaceId, projectKey);
   }
 
   // Task 상세 조회
   @Get(':task_number')
   async findOne(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('workspace_slug') workspaceSlug: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Param('project_key') projectKey: string,
     @Param('task_number', ParseIntPipe) taskNumber: number,
   ): Promise<TaskResponseDto> {
-    return await this.tasksService.findOne(user.userId, workspaceSlug, projectKey, taskNumber);
+    return await this.tasksService.findOne(user.userId, workspaceId, projectKey, taskNumber);
   }
 
   // Task 수정
   @Patch(':task_number')
   async update(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('workspace_slug') workspaceSlug: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Param('project_key') projectKey: string,
     @Param('task_number', ParseIntPipe) taskNumber: number,
     @Body() updateTaskDto: UpdateTaskRequestDto,
   ): Promise<TaskResponseDto> {
     return await this.tasksService.update(
       user.userId,
-      workspaceSlug,
+      workspaceId,
       projectKey,
       taskNumber,
       updateTaskDto,
@@ -77,10 +81,10 @@ export class TasksController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('workspace_slug') workspaceSlug: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Param('project_key') projectKey: string,
     @Param('task_number', ParseIntPipe) taskNumber: number,
   ): Promise<void> {
-    await this.tasksService.remove(user.userId, workspaceSlug, projectKey, taskNumber);
+    await this.tasksService.remove(user.userId, workspaceId, projectKey, taskNumber);
   }
 }

@@ -5,16 +5,16 @@ export class TaskResponseDto implements ITaskResponse {
   taskNumber!: number;
   title!: string;
   description?: string;
-  assigneeHandle?: string;
   sprintId?: string;
-  linkedDocumentId?: string;
+  linkedDocumentIds?: string[];
   linkedRequirementIds?: string[];
   status!: ETaskStatus;
   priority?: EPriority;
   startDate?: string;
   dueDate?: string;
-  assigneeNickname!: string;
-  reporterNickname!: string;
+  attachments!: ITaskResponse['attachments'];
+  assignee!: ITaskResponse['assignee'];
+  reporter!: ITaskResponse['reporter'];
   createdAt!: string;
   updatedAt!: string;
 }

@@ -1,71 +1,189 @@
-import { EPriority, ITask } from '@cosider/shared';
+import { EPriority, IFileMetadata, ITaskParticipantResponse } from '@cosider/shared';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { CreateNewTaskRequestDto, TaskResponseDto, UpdateTaskRequestDto } from './dto';
+import { mapTaskRowToDto } from './tasks.mapper';
+import type { DBTaskRowFromITask } from './tasks.types';
 
 import { DB_CONNECTION } from '@/common/constants';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import {
+  mediaFiles,
   projectTaskCounters,
   projectMembers,
   projects,
   requirementTaskLinks,
+  taskAttachments,
   tasks,
-  workspace_members,
-  workspaces,
+  userProfiles,
+  users,
+  workspaceMembers,
 } from '@/database/schema';
 
-type DBTaskRowFromITask = Omit<ITask, 'startDate' | 'dueDate' | 'createdAt' | 'updatedAt'> & {
-  startDate: Date | null;
-  dueDate: Date | null;
-  createdAt?: Date | null;
-  updatedAt?: Date | null;
+type TaskParticipantRow = {
+  id: string;
+  email: string;
+  handle: string;
+  nickname: string | null;
+  profileImageId: string | null;
+  updatedAt: Date | null;
+  handleUpdatedAt: Date | null;
 };
 
 @Injectable()
 export class TasksService {
   constructor(@Inject(DB_CONNECTION) private readonly db: DrizzleDB) {}
 
-  private mapRowToDto(row: DBTaskRowFromITask, linkedRequirementIds?: string[]): TaskResponseDto {
+  private getParticipantSelectFields() {
+    return {
+      id: users.id,
+      email: users.email,
+      handle: userProfiles.handle,
+      nickname: userProfiles.nickname,
+      profileImageId: userProfiles.profileImageId,
+      updatedAt: userProfiles.updatedAt,
+      handleUpdatedAt: userProfiles.handleUpdatedAt,
+    };
+  }
+
+  private formatRequiredTimestamp(timestamp: Date | null, errorMessage: string): string {
+    if (!timestamp) {
+      throw new NotFoundException(errorMessage);
+    }
+
+    return timestamp.toISOString();
+  }
+
+  private mapParticipantRow(row: TaskParticipantRow): ITaskParticipantResponse {
     return {
       id: row.id,
-      taskNumber: row.taskNumber,
-      title: row.title,
-      description: row.description ?? undefined,
-      assigneeHandle: undefined,
-      sprintId: row.sprintId ?? undefined,
-      linkedDocumentId: row.linkedDocumentId ?? undefined,
-      linkedRequirementIds: linkedRequirementIds ?? undefined,
-      status: row.status,
-      priority: row.priority ?? undefined,
-      startDate: row.startDate ? row.startDate.toISOString() : undefined,
-      dueDate: row.dueDate ? row.dueDate.toISOString() : undefined,
-      assigneeNickname: row.assigneeNickname ?? '',
-      reporterNickname: row.reporterNickname ?? '',
-      createdAt: row.createdAt ? row.createdAt.toISOString() : new Date().toISOString(),
-      updatedAt: row.updatedAt ? row.updatedAt.toISOString() : new Date().toISOString(),
+      email: row.email,
+      handle: row.handle,
+      nickname: row.nickname,
+      profileImageId: row.profileImageId,
+      updatedAt: this.formatRequiredTimestamp(row.updatedAt, 'Participant updatedAt not found'),
+      handleUpdatedAt: this.formatRequiredTimestamp(
+        row.handleUpdatedAt,
+        'Participant handleUpdatedAt not found',
+      ),
     };
+  }
+
+  private mapAttachmentRow(row: {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    visibility: IFileMetadata['visibility'];
+    createdAt: Date | null;
+  }): IFileMetadata {
+    return {
+      id: row.id,
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      visibility: row.visibility,
+      createdAt: this.formatRequiredTimestamp(row.createdAt, 'Attachment createdAt not found'),
+    };
+  }
+
+  private async findParticipantByUserIdOrThrow(userId: string): Promise<ITaskParticipantResponse> {
+    const [participant] = await this.db
+      .select(this.getParticipantSelectFields())
+      .from(users)
+      .innerJoin(userProfiles, eq(users.id, userProfiles.userId))
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!participant) {
+      throw new NotFoundException('USER_NOT_FOUND');
+    }
+
+    return this.mapParticipantRow(participant);
+  }
+
+  private async findParticipantByHandleOrThrow(handle: string): Promise<ITaskParticipantResponse> {
+    const [participant] = await this.db
+      .select(this.getParticipantSelectFields())
+      .from(users)
+      .innerJoin(userProfiles, eq(users.id, userProfiles.userId))
+      .where(eq(userProfiles.handle, handle))
+      .limit(1);
+
+    if (!participant) {
+      throw new NotFoundException('USER_NOT_FOUND');
+    }
+
+    return this.mapParticipantRow(participant);
+  }
+
+  private async findParticipantsByUserIdsOrThrow(
+    userIds: string[],
+  ): Promise<Map<string, ITaskParticipantResponse>> {
+    if (userIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .select(this.getParticipantSelectFields())
+      .from(users)
+      .innerJoin(userProfiles, eq(users.id, userProfiles.userId))
+      .where(inArray(users.id, userIds));
+
+    return new Map(rows.map((row) => [row.id, this.mapParticipantRow(row)]));
+  }
+
+  private async findAttachmentsByTaskId(taskId: string): Promise<IFileMetadata[]> {
+    const attachmentsByTaskId = await this.findAttachmentsByTaskIds([taskId]);
+    return attachmentsByTaskId.get(taskId) ?? [];
+  }
+
+  private async findAttachmentsByTaskIds(taskIds: string[]): Promise<Map<string, IFileMetadata[]>> {
+    if (taskIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .select({
+        taskId: taskAttachments.taskId,
+        id: taskAttachments.id,
+        fileName: mediaFiles.fileName,
+        mimeType: mediaFiles.mimeType,
+        fileSize: mediaFiles.fileSize,
+        visibility: mediaFiles.visibility,
+        createdAt: mediaFiles.createdAt,
+      })
+      .from(taskAttachments)
+      .innerJoin(mediaFiles, eq(taskAttachments.fileId, mediaFiles.id))
+      .where(inArray(taskAttachments.taskId, taskIds));
+
+    return rows.reduce((acc, row) => {
+      const attachments = acc.get(row.taskId) ?? [];
+
+      attachments.push(this.mapAttachmentRow(row));
+
+      acc.set(row.taskId, attachments);
+      return acc;
+    }, new Map<string, IFileMetadata[]>());
   }
 
   private async findProjectIdOrThrow(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
   ): Promise<string> {
     const [project] = await this.db
       .select({ id: projects.id })
       .from(projects)
-      .innerJoin(workspaces, eq(projects.workspaceId, workspaces.id))
-      .innerJoin(workspace_members, eq(workspaces.id, workspace_members.workspaceId))
+      .innerJoin(workspaceMembers, eq(projects.workspaceId, workspaceMembers.workspaceId))
       .innerJoin(projectMembers, eq(projects.id, projectMembers.projectId))
       .where(
         and(
-          eq(workspaces.slug, workspaceSlug),
+          eq(projects.workspaceId, workspaceId),
           eq(projects.key, projectKey),
-          eq(workspace_members.userId, userId),
+          eq(workspaceMembers.userId, userId),
           eq(projectMembers.userId, userId),
-          isNull(workspaces.deletedAt),
           isNull(projects.deletedAt),
         ),
       )
@@ -81,41 +199,28 @@ export class TasksService {
   // Task 생성
   async create(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
     createNewTaskDto: CreateNewTaskRequestDto,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceId, projectKey);
+    const reporter = await this.findParticipantByUserIdOrThrow(userId);
+    const nextAssignee = createNewTaskDto.assigneeHandle
+      ? await this.findParticipantByHandleOrThrow(createNewTaskDto.assigneeHandle)
+      : reporter;
 
     return await this.db.transaction(async (tx) => {
-      const [counter] = await tx
-        .select({ lastTaskNumber: projectTaskCounters.lastTaskNumber })
-        .from(projectTaskCounters)
-        .where(eq(projectTaskCounters.projectId, projectId))
-        .limit(1);
-
-      let nextTaskNumber: number;
-
-      if (!counter) {
-        nextTaskNumber = 1;
-
-        await tx.insert(projectTaskCounters).values({
+      const [{ nextTaskNumber }] = await tx
+        .insert(projectTaskCounters)
+        .values({
           projectId,
-          lastTaskNumber: nextTaskNumber,
-        });
-      } else {
-        const [updatedCounter] = await tx
-          .update(projectTaskCounters)
-          .set({ lastTaskNumber: sql`${projectTaskCounters.lastTaskNumber} + 1` })
-          .where(eq(projectTaskCounters.projectId, projectId))
-          .returning({ nextTaskNumber: projectTaskCounters.lastTaskNumber });
-
-        if (!updatedCounter) {
-          throw new BadRequestException('Failed to update task counter');
-        }
-
-        nextTaskNumber = updatedCounter.nextTaskNumber;
-      }
+          lastTaskNumber: 1,
+        })
+        .onConflictDoUpdate({
+          target: [projectTaskCounters.projectId],
+          set: { lastTaskNumber: sql`${projectTaskCounters.lastTaskNumber} + 1` },
+        })
+        .returning({ nextTaskNumber: projectTaskCounters.lastTaskNumber });
 
       const [inserted] = await tx
         .insert(tasks)
@@ -124,10 +229,10 @@ export class TasksService {
           taskNumber: nextTaskNumber,
           title: createNewTaskDto.title,
           description: createNewTaskDto.description ?? null,
-          assigneeId: null,
-          assigneeNickname: null,
-          reporterId: null,
-          reporterNickname: null,
+          assigneeId: nextAssignee.id,
+          assigneeNickname: nextAssignee.nickname,
+          reporterId: reporter.id,
+          reporterNickname: reporter.nickname,
           linkedDocumentId: createNewTaskDto.linkedDocumentId ?? null,
           sprintId: createNewTaskDto.sprintId ?? null,
           status: createNewTaskDto.status,
@@ -149,17 +254,23 @@ export class TasksService {
         await tx.insert(requirementTaskLinks).values(links);
       }
 
-      return this.mapRowToDto(inserted, createNewTaskDto.linkedRequirementIds);
+      return mapTaskRowToDto(
+        inserted,
+        createNewTaskDto.linkedRequirementIds,
+        nextAssignee,
+        reporter,
+        [],
+      );
     });
   }
 
   // Task 목록 조회
   async findAll(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
   ): Promise<TaskResponseDto[]> {
-    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceId, projectKey);
 
     const rows = await this.db
       .select()
@@ -172,11 +283,22 @@ export class TasksService {
     }
 
     const taskIds = rows.map((row) => row.id);
+    const participantIds = Array.from(
+      new Set(
+        rows
+          .flatMap((row) => [row.assigneeId, row.reporterId])
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
 
-    const links = await this.db
-      .select()
-      .from(requirementTaskLinks)
-      .where(inArray(requirementTaskLinks.taskId, taskIds));
+    const [links, participantsMap, attachmentsMap] = await Promise.all([
+      this.db
+        .select()
+        .from(requirementTaskLinks)
+        .where(inArray(requirementTaskLinks.taskId, taskIds)),
+      this.findParticipantsByUserIdsOrThrow(participantIds),
+      this.findAttachmentsByTaskIds(taskIds),
+    ]);
 
     const linksMap = links.reduce(
       (acc, link) => {
@@ -189,17 +311,39 @@ export class TasksService {
       {} as Record<string, string[]>,
     );
 
-    return rows.map((row) => this.mapRowToDto(row as DBTaskRowFromITask, linksMap[row.id] || []));
+    return rows.map((row) => {
+      const taskRow = row as DBTaskRowFromITask;
+
+      if (!taskRow.assigneeId || !taskRow.reporterId) {
+        throw new NotFoundException('Task participant not found');
+      }
+
+      const taskAssignee = participantsMap.get(taskRow.assigneeId);
+      const taskReporter = participantsMap.get(taskRow.reporterId);
+      const attachments = attachmentsMap.get(taskRow.id) ?? [];
+
+      if (!taskAssignee || !taskReporter) {
+        throw new NotFoundException('Task participant not found');
+      }
+
+      return mapTaskRowToDto(
+        taskRow,
+        linksMap[row.id] || [],
+        taskAssignee,
+        taskReporter,
+        attachments,
+      );
+    });
   }
 
   // Task 상세 조회
   async findOne(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
     taskNumber: number,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceId, projectKey);
 
     const [row] = await this.db
       .select()
@@ -216,21 +360,38 @@ export class TasksService {
       .from(requirementTaskLinks)
       .where(eq(requirementTaskLinks.taskId, row.id));
 
-    return this.mapRowToDto(
+    if (!row.assigneeId || !row.reporterId) {
+      throw new NotFoundException('Task participant not found');
+    }
+
+    const [assignee, reporter, attachments] = await Promise.all([
+      this.findParticipantByUserIdOrThrow(row.assigneeId),
+      this.findParticipantByUserIdOrThrow(row.reporterId),
+      this.findAttachmentsByTaskId(row.id),
+    ]);
+
+    return mapTaskRowToDto(
       row,
       links.map((link) => link.requirementId),
+      assignee,
+      reporter,
+      attachments,
     );
   }
 
   // Task 수정
   async update(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
     taskNumber: number,
     updateTaskDto: UpdateTaskRequestDto,
   ): Promise<TaskResponseDto> {
-    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceId, projectKey);
+    const nextAssignee =
+      updateTaskDto.assigneeHandle !== undefined
+        ? await this.findParticipantByHandleOrThrow(updateTaskDto.assigneeHandle)
+        : null;
 
     return await this.db.transaction(async (tx) => {
       const [existing] = await tx
@@ -246,6 +407,8 @@ export class TasksService {
       const patch: Partial<{
         title: string;
         description: string | null;
+        assigneeId: string | null;
+        assigneeNickname: string | null;
         sprintId: string | null;
         linkedDocumentId: string | null;
         status: (typeof tasks.$inferInsert)['status'];
@@ -258,6 +421,10 @@ export class TasksService {
       if (updateTaskDto.title !== undefined) patch.title = updateTaskDto.title;
       if (updateTaskDto.description !== undefined) {
         patch.description = updateTaskDto.description ?? null;
+      }
+      if (nextAssignee) {
+        patch.assigneeId = nextAssignee.id;
+        patch.assigneeNickname = nextAssignee.nickname;
       }
       if (updateTaskDto.sprintId !== undefined) patch.sprintId = updateTaskDto.sprintId ?? null;
       if (updateTaskDto.linkedDocumentId !== undefined) {
@@ -309,9 +476,22 @@ export class TasksService {
         .from(requirementTaskLinks)
         .where(eq(requirementTaskLinks.taskId, updatedRow.id));
 
-      return this.mapRowToDto(
+      if (!updatedRow.assigneeId || !updatedRow.reporterId) {
+        throw new NotFoundException('Task participant not found');
+      }
+
+      const [taskAssignee, taskReporter, attachments] = await Promise.all([
+        this.findParticipantByUserIdOrThrow(updatedRow.assigneeId),
+        this.findParticipantByUserIdOrThrow(updatedRow.reporterId),
+        this.findAttachmentsByTaskId(updatedRow.id),
+      ]);
+
+      return mapTaskRowToDto(
         updatedRow,
         links.map((l) => l.requirementId),
+        taskAssignee,
+        taskReporter,
+        attachments,
       );
     });
   }
@@ -319,11 +499,11 @@ export class TasksService {
   // Task 삭제
   async remove(
     userId: string,
-    workspaceSlug: string,
+    workspaceId: string,
     projectKey: string,
     taskNumber: number,
   ): Promise<void> {
-    const projectId = await this.findProjectIdOrThrow(userId, workspaceSlug, projectKey);
+    const projectId = await this.findProjectIdOrThrow(userId, workspaceId, projectKey);
 
     const [existing] = await this.db
       .select({ id: tasks.id })
