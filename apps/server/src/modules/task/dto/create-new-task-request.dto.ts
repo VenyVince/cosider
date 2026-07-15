@@ -22,16 +22,16 @@ export class CreateNewTaskRequestDto implements ICreateNewTaskRequest {
   @IsOptional()
   assigneeHandle?: string;
 
-  @IsUUID('4')
+  @IsUUID('all')
   @IsOptional()
   sprintId?: string;
 
-  @IsUUID('4')
+  @IsUUID('all')
   @IsOptional()
   linkedDocumentId?: string;
 
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID('all', { each: true })
   @IsOptional()
   linkedRequirementIds?: string[];
 
