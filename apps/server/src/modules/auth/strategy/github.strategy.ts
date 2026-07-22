@@ -5,6 +5,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Profile, Strategy } from 'passport-github2';
 
 import type { OAuthUserPayload } from '@/types/auth';
+import { OAuthEmailRequiredException } from '../exception/oauth.exception';
 
 @Injectable()
 export class GithubOAuthStrategy extends PassportStrategy(Strategy, 'github') {
@@ -20,6 +21,10 @@ export class GithubOAuthStrategy extends PassportStrategy(Strategy, 'github') {
   validate(_accessToken: string, _refreshToken: string, profile: Profile): OAuthUserPayload {
     const { id, emails } = profile;
     const email = emails && emails[0] ? emails[0].value : '';
+
+    if (!email) {
+      throw new OAuthEmailRequiredException();
+    }
 
     return {
       email,

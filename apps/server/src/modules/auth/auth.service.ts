@@ -18,6 +18,10 @@ import type { Redis } from 'ioredis';
 import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
 import { UserCredentialService } from './user-credential.service';
+import {
+  OAuthSignupPendingException,
+  RequireSocialLinkingException,
+} from './exception/oauth.exception';
 
 import {
   DB_CONNECTION,
@@ -314,23 +318,27 @@ export class AuthService {
     // TODO: 추후 fix
     const { email, provider, providerId } = profile;
 
+    // 1. Redis에서 가입 대기 상태 확인
+    const redisKey = `${REDIS_KEY_REGISTER_PENDING}:${email}`;
+    const pendingUser = await this.redis.hgetall(redisKey);
+    if (pendingUser && Object.keys(pendingUser).length > 0) {
+      throw new OAuthSignupPendingException();
+    }
+
     const existing = await this.userCredentialService.findExistingProvidersByEmail(email);
 
     if (existing) {
+      // 2. DB 유저 상태가 PENDING인 경우 대기 예외 처리
+      if (existing.status === EUserStatus.PENDING) {
+        throw new OAuthSignupPendingException();
+      }
+
       const hasProvider = existing.providers.includes(provider);
       if (hasProvider) {
         return this.generateAuthTokens({ userId: existing.userId });
       }
 
-      throw new ConflictException({
-        statusCode: HttpStatus.CONFLICT,
-        errorCode: 'REQUIRE_SOCIAL_LINKING',
-        message: 'ERR_REQUIRE_SOCIAL_LINKING',
-        meta: {
-          userId: existing.userId,
-          providers: existing.providers,
-        },
-      });
+      throw new RequireSocialLinkingException(existing.userId, existing.providers);
     }
 
     const newUser = await this.db.transaction(async (tx) => {

@@ -1,20 +1,23 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Injectable } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
+
+import { OAuthException } from '../exception/oauth.exception';
 
 interface OAuthErrorResponse {
   errorCode?: string;
   meta?: {
     providers?: string[];
+    userId?: string;
   };
 }
 
-@Catch()
+@Catch(OAuthException)
 @Injectable()
 export class OAuthExceptionFilter implements ExceptionFilter {
   constructor(private readonly configService: ConfigService) {}
 
-  catch(exception: unknown, host: ArgumentsHost): void {
+  catch(exception: OAuthException, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
@@ -22,25 +25,18 @@ export class OAuthExceptionFilter implements ExceptionFilter {
     let errorCode = 'AUTH_FAILED';
     let providers = '';
 
-    if (exception instanceof HttpException) {
-      const responseBody = exception.getResponse();
-      const status = exception.getStatus();
+    const responseBody = exception.getResponse();
 
-      if (status === 409) {
-        errorCode = 'CONFLICT';
+    if (typeof responseBody === 'object' && responseBody !== null) {
+      const body = responseBody as OAuthErrorResponse;
+      errorCode = body.errorCode || errorCode;
+
+      const metaProviders = body.meta?.providers;
+      if (Array.isArray(metaProviders)) {
+        providers = metaProviders.join(',');
       }
-
-      if (typeof responseBody === 'object' && responseBody !== null) {
-        const body = responseBody as OAuthErrorResponse;
-        errorCode = body.errorCode || errorCode;
-
-        const metaProviders = body.meta?.providers;
-        if (Array.isArray(metaProviders)) {
-          providers = metaProviders.join(',');
-        }
-      } else if (typeof responseBody === 'string') {
-        errorCode = responseBody;
-      }
+    } else if (typeof responseBody === 'string') {
+      errorCode = responseBody;
     }
 
     const redirectUrl = new URL(`${frontendUrl}/login`);
@@ -52,3 +48,4 @@ export class OAuthExceptionFilter implements ExceptionFilter {
     response.redirect(redirectUrl.toString());
   }
 }
+
