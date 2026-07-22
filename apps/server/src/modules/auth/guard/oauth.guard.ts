@@ -1,17 +1,19 @@
 import { randomBytes } from 'crypto';
 
 import {
-  BadRequestException,
   CanActivate,
   ExecutionContext,
-  HttpStatus,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
+
+import {
+  CsrfAttackDetectedException,
+  UnsupportedProviderException,
+} from '../exception/oauth.exception';
 
 interface CustomRequest extends Request {
   oauthState?: string;
@@ -50,13 +52,13 @@ export class OAuthGuard implements CanActivate {
     const provider = request.params.provider;
 
     if (typeof provider !== 'string') {
-      throw new BadRequestException({ errorCode: 'UNSUPPORTED_PROVIDER' });
+      throw new UnsupportedProviderException();
     }
 
     const targetGuard = providerGuards[provider];
 
     if (!targetGuard) {
-      throw new BadRequestException({ errorCode: 'UNSUPPORTED_PROVIDER' });
+      throw new UnsupportedProviderException();
     }
 
     const path = request.path;
@@ -72,15 +74,12 @@ export class OAuthGuard implements CanActivate {
       response.clearCookie('oauth_state', {
         httpOnly: true,
         sameSite: 'lax',
+        secure: this.isProduction,
         path: '/',
       });
 
       if (!stateCookie || !stateQuery || stateCookie !== stateQuery) {
-        throw new UnauthorizedException({
-          statusCode: HttpStatus.UNAUTHORIZED,
-          errorCode: 'CSRF_ATTACK_DETECTED',
-          message: 'ERR_CSRF_ATTACK_DETECTED',
-        });
+        throw new CsrfAttackDetectedException();
       }
     } else {
       // 2. 인증 시작 경로인 경우: CSRF State 생성 및 주입
