@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Post,
   Query,
+  Redirect,
   Req,
   Res,
   UnauthorizedException,
@@ -20,6 +21,7 @@ import { CurrentUser, ExtractRefreshToken } from './decorator';
 import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
 import { OAuthExceptionFilter } from './filter/oauth-exception.filter';
+import { OAuthException } from './exception/oauth.exception';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
 import { OAuthGuard } from './guard/oauth.guard';
@@ -100,26 +102,30 @@ export class AuthController {
   @Get('oauth/:provider/callback')
   @UseGuards(OAuthGuard)
   @UseFilters(OAuthExceptionFilter)
+  @Redirect()
   async oauthCallback(
     @Req() req: Request,
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: Response,
     @Query('code') _code: string,
     @Query('state') _state: string,
-  ): Promise<void> {
+  ): Promise<{ url: string }> {
     const user = req.user as OAuthUserPayload;
     if (!user) {
-      throw new UnauthorizedException({
-        statusCode: HttpStatus.UNAUTHORIZED,
-        errorCode: 'AUTH_FAILED',
-        message: 'ERR_AUTH_FAILED',
-      });
+      throw new OAuthException(
+        {
+          statusCode: HttpStatus.UNAUTHORIZED,
+          errorCode: 'AUTH_FAILED',
+          message: 'ERR_AUTH_FAILED',
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const tokens = await this.authService.loginOrRegisterOAuth(user);
     this.setNewAuthTokens(tokens, res);
 
     const frontendUrl = this.configService.getOrThrow<string>('FRONTEND_URL');
-    res.redirect(frontendUrl);
+    return { url: frontendUrl };
   }
 
   @Post('refresh')
