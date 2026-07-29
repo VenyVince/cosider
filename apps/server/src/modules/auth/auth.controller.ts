@@ -9,7 +9,6 @@ import {
   Redirect,
   Req,
   Res,
-  UnauthorizedException,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -20,8 +19,8 @@ import { AuthService } from './auth.service';
 import { CurrentUser, ExtractRefreshToken } from './decorator';
 import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
-import { OAuthExceptionFilter } from './filter/oauth-exception.filter';
 import { OAuthException } from './exception/oauth.exception';
+import { OAuthExceptionFilter } from './filter/oauth-exception.filter';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
 import { OAuthGuard } from './guard/oauth.guard';
@@ -32,9 +31,6 @@ import type {
   GeneratedAuthTokens,
   OAuthUserPayload,
 } from '@/types/auth/auth.type';
-// import { OAuthGuard } from '../guards/oauth.guard';
-// import { LogoutGuard} from '../guards/logout.guard;
-// import { RefreshGuard } from '../guards/refresh.guard';
 
 @Controller('api/v1/auth')
 export class AuthController {

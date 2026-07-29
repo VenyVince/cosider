@@ -16,10 +16,15 @@ export interface AuthenticatedUser {
   jobRole: EJobRole;
 }
 
+export interface ExistingProviderInfo {
+  provider: EUserCredentialProvider;
+  providerId: string;
+}
+
 export interface ExistingProviders {
   userId: string;
   status: EUserStatus;
-  providers: EUserCredentialProvider[];
+  providers: ExistingProviderInfo[];
 }
 
 export type OAuthUserPayload = {

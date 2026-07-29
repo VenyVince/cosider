@@ -109,6 +109,7 @@ export class UserCredentialService {
         id: users.id,
         status: users.status,
         provider: userCredentials.provider,
+        providerId: userCredentials.providerId,
       })
       .from(users)
       .innerJoin(userCredentials, eq(users.id, userCredentials.userId))
@@ -121,7 +122,10 @@ export class UserCredentialService {
     return {
       userId: records[0].id,
       status: records[0].status,
-      providers: records.map((record) => record.provider),
+      providers: records.map((record) => ({
+        provider: record.provider,
+        providerId: record.providerId,
+      })),
     };
   }
 }

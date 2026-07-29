@@ -48,4 +48,3 @@ export class OAuthExceptionFilter implements ExceptionFilter {
     response.redirect(redirectUrl.toString());
   }
 }
-
