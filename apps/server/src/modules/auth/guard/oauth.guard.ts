@@ -12,6 +12,8 @@ import {
   UnsupportedProviderException,
 } from '../exception/oauth.exception';
 
+import type { OAuthUserPayload } from '@/types/auth';
+
 interface CustomRequest extends Request {
   oauthState?: string;
 }
@@ -26,20 +28,19 @@ const providerGuards: Record<string, CanActivate> = {
       return { state: request.oauthState };
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    override handleRequest<TUser = any>(
-      err: unknown,
+    override handleRequest<TUser = OAuthUserPayload>(
+      err: Error | null,
       user: TUser,
-      _info: unknown,
+      _info: object | undefined,
       _context: ExecutionContext,
-      _status?: unknown,
+      _status?: number,
     ): TUser {
       if (err || !user) {
         throw new OAuthException(
           {
             statusCode: HttpStatus.UNAUTHORIZED,
-            errorCode: 'AUTH_FAILED',
-            message: err instanceof Error ? err.message : 'ERR_AUTH_FAILED',
+            errorCode: 'OAUTH_AUTHENTICATION_FAILED',
+            message: 'ERR_OAUTH_AUTHENTICATION_FAILED',
           },
           HttpStatus.UNAUTHORIZED,
         );
@@ -53,20 +54,19 @@ const providerGuards: Record<string, CanActivate> = {
       return { state: request.oauthState };
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    override handleRequest<TUser = any>(
-      err: unknown,
+    override handleRequest<TUser = OAuthUserPayload>(
+      err: Error | null,
       user: TUser,
-      _info: unknown,
+      _info: object | undefined,
       _context: ExecutionContext,
-      _status?: unknown,
+      _status?: number,
     ): TUser {
       if (err || !user) {
         throw new OAuthException(
           {
             statusCode: HttpStatus.UNAUTHORIZED,
-            errorCode: 'AUTH_FAILED',
-            message: err instanceof Error ? err.message : 'ERR_AUTH_FAILED',
+            errorCode: 'OAUTH_AUTHENTICATION_FAILED',
+            message: 'ERR_OAUTH_AUTHENTICATION_FAILED',
           },
           HttpStatus.UNAUTHORIZED,
         );

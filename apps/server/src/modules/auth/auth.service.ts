@@ -401,7 +401,7 @@ export class AuthService {
         userId: user.id,
         provider,
         providerId,
-        credential: null as unknown as string,
+        credential: null!,
       });
 
       return user;
