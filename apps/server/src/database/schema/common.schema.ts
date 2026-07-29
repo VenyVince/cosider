@@ -1,4 +1,4 @@
-import { EFileContextType, EFileVisibility, EPriority, IMediaFile } from '@cosider/shared';
+import { EFileVisibility, EPriority, IMediaFile } from '@cosider/shared';
 import { bigint, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
 
@@ -18,11 +18,6 @@ type MediaFileSchema = Record<keyof IMediaFile, unknown>;
 export const fileVisibilityEnum = pgEnum(
   'file_visibility_enum',
   Object.values(EFileVisibility) as [EFileVisibility, ...EFileVisibility[]],
-);
-
-export const fileContextTypeEnum = pgEnum(
-  'file_context_type_enum',
-  Object.values(EFileContextType) as [EFileContextType, ...EFileContextType[]],
 );
 
 export const mediaFiles = pgTable('media_files', {
