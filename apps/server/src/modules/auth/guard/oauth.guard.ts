@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 
 import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +16,13 @@ import type { OAuthUserPayload } from '@/types/auth';
 
 interface CustomRequest extends Request {
   oauthState?: string;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 // 클래스 외부에 선언하여 싱글톤으로 가드 인스턴스 유지
@@ -117,7 +124,7 @@ export class OAuthGuard implements CanActivate {
         path: '/',
       });
 
-      if (!stateCookie || !stateQuery || stateCookie !== stateQuery) {
+      if (!stateCookie || !stateQuery || !safeEqual(stateCookie, stateQuery)) {
         throw new CsrfAttackDetectedException();
       }
     } else {
