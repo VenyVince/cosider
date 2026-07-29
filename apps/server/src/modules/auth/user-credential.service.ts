@@ -46,7 +46,7 @@ export class UserCredentialService {
       .limit(1);
 
     // 유저가 없는 경우
-    if (!record) {
+    if (!record || !record.passwordHash) {
       return null;
     }
     // password 검증
