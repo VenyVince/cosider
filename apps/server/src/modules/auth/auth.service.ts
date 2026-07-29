@@ -17,11 +17,12 @@ import type { Redis } from 'ioredis';
 
 import { EmailVerifyRequest } from './dto';
 import { SignupRequest } from './dto/signup-request.dto';
-import { UserCredentialService } from './user-credential.service';
 import {
+  OAuthException,
   OAuthSignupPendingException,
   RequireSocialLinkingException,
 } from './exception/oauth.exception';
+import { UserCredentialService } from './user-credential.service';
 
 import {
   DB_CONNECTION,
@@ -185,7 +186,7 @@ export class AuthService {
 
     const existing = await this.userCredentialService.findExistingProvidersByEmail(email);
     if (existing) {
-      if (existing.providers.includes(EUserCredentialProvider.LOCAL)) {
+      if (existing.providers.some((p) => p.provider === EUserCredentialProvider.LOCAL)) {
         // 이미 존재하는 계정이며, LOCAL provider가 존재.
         throw new ConflictException({
           statusCode: HttpStatus.CONFLICT,
@@ -333,12 +334,58 @@ export class AuthService {
         throw new OAuthSignupPendingException();
       }
 
-      const hasProvider = existing.providers.includes(provider);
-      if (hasProvider) {
+      // 3. OAuth 계정 status 검증 (BANNED, INACTIVE 등)
+      if (existing.status === EUserStatus.BANNED) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.UNAUTHORIZED,
+            errorCode: EUserStatus.BANNED,
+            message: 'ERR_BANNED_ACCOUNT',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      } else if (existing.status === EUserStatus.INACTIVE) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.FORBIDDEN,
+            errorCode: EUserStatus.INACTIVE,
+            message: 'ERR_INACTIVE_ACCOUNT',
+          },
+          HttpStatus.FORBIDDEN,
+        );
+      } else if (existing.status === EUserStatus.PENDING_LEAVE) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.FORBIDDEN,
+            errorCode: EUserStatus.PENDING_LEAVE,
+            message: 'ERR_PENDING_LEAVE_ACCOUNT',
+          },
+          HttpStatus.FORBIDDEN,
+        );
+      } else if (existing.status === EUserStatus.LEAVED) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.UNAUTHORIZED,
+            errorCode: EUserStatus.LEAVED,
+            message: 'ERR_LEAVED_ACCOUNT',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // 4. provider와 providerId가 모두 일치하는지 검증
+      const matchedProvider = existing.providers.find(
+        (p) => p.provider === provider && p.providerId === providerId,
+      );
+
+      if (matchedProvider) {
         return this.generateAuthTokens({ userId: existing.userId });
       }
 
-      throw new RequireSocialLinkingException(existing.userId, existing.providers);
+      throw new RequireSocialLinkingException(
+        existing.userId,
+        existing.providers.map((p) => p.provider),
+      );
     }
 
     const newUser = await this.db.transaction(async (tx) => {

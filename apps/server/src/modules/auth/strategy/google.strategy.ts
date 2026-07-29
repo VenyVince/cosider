@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Profile, Strategy } from 'passport-google-oauth20';
 
+import { OAuthEmailRequiredException } from '../exception/oauth.exception';
+
 import type { OAuthUserPayload } from '@/types/auth';
 
 @Injectable()
@@ -19,10 +21,19 @@ export class GoogleOAuthStrategy extends PassportStrategy(Strategy, 'google') {
 
   validate(_accessToken: string, _refreshToken: string, profile: Profile): OAuthUserPayload {
     const { id, emails } = profile;
-    const email = emails && emails[0] ? emails[0].value : '';
+
+    if (!emails || emails.length === 0) {
+      throw new OAuthEmailRequiredException();
+    }
+
+    const verifiedEmail = emails.find((e) => e.verified === true);
+
+    if (!verifiedEmail || !verifiedEmail.value) {
+      throw new OAuthEmailRequiredException();
+    }
 
     return {
-      email,
+      email: verifiedEmail.value,
       provider: EUserCredentialProvider.GOOGLE,
       providerId: id,
     };

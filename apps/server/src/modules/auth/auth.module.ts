@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { OAuthExceptionFilter } from './filter/oauth-exception.filter';
 import { JwtAuthGuard } from './guard/jwt-auth.guard';
 import { LocalAuthGuard } from './guard/local-auth.guard';
 import { OAuthGuard } from './guard/oauth.guard';
@@ -43,6 +44,9 @@ import { UserCredentialService } from './user-credential.service';
     JwtAuthGuard,
     RefreshGuard,
     OAuthGuard,
+
+    // Filters
+    OAuthExceptionFilter,
   ],
 })
 export class AuthModule {}

@@ -1,10 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
@@ -12,6 +8,7 @@ import type { Observable } from 'rxjs';
 
 import {
   CsrfAttackDetectedException,
+  OAuthException,
   UnsupportedProviderException,
 } from '../exception/oauth.exception';
 
@@ -28,11 +25,53 @@ const providerGuards: Record<string, CanActivate> = {
       const request = context.switchToHttp().getRequest<CustomRequest>();
       return { state: request.oauthState };
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    override handleRequest<TUser = any>(
+      err: unknown,
+      user: TUser,
+      _info: unknown,
+      _context: ExecutionContext,
+      _status?: unknown,
+    ): TUser {
+      if (err || !user) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.UNAUTHORIZED,
+            errorCode: 'AUTH_FAILED',
+            message: err instanceof Error ? err.message : 'ERR_AUTH_FAILED',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      return user;
+    }
   })(),
   github: new (class extends AuthGuard('github') {
     override getAuthenticateOptions(context: ExecutionContext) {
       const request = context.switchToHttp().getRequest<CustomRequest>();
       return { state: request.oauthState };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    override handleRequest<TUser = any>(
+      err: unknown,
+      user: TUser,
+      _info: unknown,
+      _context: ExecutionContext,
+      _status?: unknown,
+    ): TUser {
+      if (err || !user) {
+        throw new OAuthException(
+          {
+            statusCode: HttpStatus.UNAUTHORIZED,
+            errorCode: 'AUTH_FAILED',
+            message: err instanceof Error ? err.message : 'ERR_AUTH_FAILED',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      return user;
     }
   })(),
 };
