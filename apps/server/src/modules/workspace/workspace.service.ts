@@ -1,4 +1,4 @@
-import { EFileRefType, EWorkspaceStatus, EWorkspaceUserRole } from '@cosider/shared';
+import { EWorkspaceStatus, EWorkspaceUserRole } from '@cosider/shared';
 import {
   BadRequestException,
   ConflictException,
@@ -270,23 +270,44 @@ export class WorkspacesService {
     dto: FileUploadCompletionRequest,
     userId: string,
   ): Promise<void> {
-    await this.findMemberOrThrow(workspaceId, userId);
+    const member = await this.findMemberOrThrow(workspaceId, userId);
+
+    if (!isOwner(member.role)) {
+      throw new ForbiddenException('로고를 수정할 권한이 없습니다.');
+    }
 
     if (!dto.uploadToken) {
       throw new BadRequestException('uploadToken이 필요합니다');
     }
 
-    const mediaId = await this.filesService.consumeUploadToken(
+    const prepared = await this.filesService.prepareUpload(
       userId,
       dto.uploadToken,
-      EFileRefType.WORKSPACE,
+      ({ fileId, fileName }) =>
+        this.filesService.buildPermanentObjectKey(
+          `logos/workspaces/${workspaceId}`,
+          fileId,
+          this.filesService.extractExt(fileName),
+        ),
     );
 
-    await this.filesService.connectMediaFile(mediaId, workspaceId);
+    try {
+      await this.db.transaction(async (tx) => {
+        const mediaId = await this.filesService.insertPreparedFile(tx, prepared, {
+          id: workspaceId,
+          workspaceId,
+        });
 
-    await this.db
-      .update(workspaces)
-      .set({ logoImageId: mediaId })
-      .where(eq(workspaces.id, workspaceId));
+        await tx
+          .update(workspaces)
+          .set({ logoImageId: mediaId })
+          .where(eq(workspaces.id, workspaceId));
+      });
+
+      await this.filesService.completeUpload(prepared);
+    } catch (err) {
+      await this.filesService.rollbackUpload(prepared);
+      throw err;
+    }
   }
 }
