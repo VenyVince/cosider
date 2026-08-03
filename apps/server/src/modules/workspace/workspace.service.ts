@@ -35,47 +35,74 @@ export class WorkspacesService {
   ) {}
 
   async createWorkspace(dto: CreateWorkspaceRequest, ownerId: string): Promise<WorkspaceResponse> {
-    // 트랜잭션으로 워크스페이스와 워크스페이스 멤버 등록을 함께 생성
-    const workspace = await this.db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(workspaces)
-        .values({
-          ownerId: ownerId,
-          slug: dto.slug,
-          name: dto.name,
-          description: dto.description,
-          logoImageId: null,
-        })
-        .returning()
-        .catch((e: { code: string }) => {
-          if (e.code === '23505') {
-            throw new ConflictException('이미 사용중인 slug입니다.');
-          }
-          throw e;
+    // 로고가 있는 경우 presigned URL 검증 및 파일 이동 준비 (트랜잭션 보호 불가로 선행 처리)
+    const prepared = dto.uploadToken
+      ? await this.filesService.prepareUpload(ownerId, dto.uploadToken, ({ fileId, fileName }) =>
+          this.filesService.buildPermanentObjectKey(
+            `logos/workspaces`,
+            fileId,
+            this.filesService.extractExt(fileName),
+          ),
+        )
+      : null;
+
+    try {
+      const workspace = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(workspaces)
+          .values({
+            ownerId,
+            slug: dto.slug,
+            name: dto.name,
+            description: dto.description,
+            logoImageId: null,
+          })
+          .returning()
+          .catch((e: { code: string }) => {
+            if (e.code === '23505') throw new ConflictException('이미 사용중인 slug입니다.');
+            throw e;
+          });
+
+        if (!created) throw new InternalServerErrorException('워크스페이스 생성에 실패했습니다.');
+
+        await tx.insert(workspaceMembers).values({
+          userId: ownerId,
+          workspaceId: created.id,
+          role: EWorkspaceUserRole.OWNER,
         });
 
-      if (!created) {
-        throw new InternalServerErrorException('워크스페이스 생성에 실패했습니다.');
-      }
+        if (prepared) {
+          const mediaId = await this.filesService.insertPreparedFile(tx, prepared, {
+            id: created.id,
+            workspaceId: created.id,
+          });
 
-      await tx.insert(workspaceMembers).values({
-        userId: ownerId,
-        workspaceId: created.id,
-        role: EWorkspaceUserRole.OWNER,
+          await tx
+            .update(workspaces)
+            .set({ logoImageId: mediaId })
+            .where(eq(workspaces.id, created.id));
+
+          return { ...created, logoImageId: mediaId };
+        }
+
+        return created;
       });
 
-      return created;
-    });
+      if (prepared) await this.filesService.completeUpload(prepared);
 
-    return {
-      slug: workspace.slug,
-      name: workspace.name,
-      status: workspace.status,
-      description: workspace.description ?? '',
-      logoImageId: workspace.logoImageId,
-      createdAt: workspace.createdAt.toISOString(),
-      role: EWorkspaceUserRole.OWNER,
-    };
+      return {
+        slug: workspace.slug,
+        name: workspace.name,
+        status: workspace.status,
+        description: workspace.description ?? '',
+        logoImageId: workspace.logoImageId,
+        createdAt: workspace.createdAt.toISOString(),
+        role: EWorkspaceUserRole.OWNER,
+      };
+    } catch (err) {
+      if (prepared) await this.filesService.rollbackUpload(prepared);
+      throw err;
+    }
   }
 
   async getWorkspaceList(userId: string): Promise<WorkspaceResponse[]> {
