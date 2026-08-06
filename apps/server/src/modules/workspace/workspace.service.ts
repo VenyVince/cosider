@@ -21,8 +21,6 @@ import { canManage, isOwner } from './utils/role.util';
 
 import { DB_CONNECTION } from '@/common/constants';
 import { FileUploadCompletionRequest } from '@/common/file/dto/file-upload-completion-request.dto';
-import { FileUploadRequest } from '@/common/file/dto/file-upload-request.dto';
-import { FileUploadUrlResponse } from '@/common/file/dto/file-upload-url-response.dto';
 import { FilesService } from '@/common/file/files.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import { userProfiles, workspaceMembers, workspaces } from '@/database/schema';
@@ -267,13 +265,6 @@ export class WorkspacesService {
     if (!restoredWorkspace) {
       throw new NotFoundException('존재하지 않는 워크스페이스입니다.');
     }
-  }
-
-  async requestLogoPresignedUrl(
-    dto: FileUploadRequest,
-    userId: string,
-  ): Promise<FileUploadUrlResponse> {
-    return this.filesService.issueUploadToken(userId, dto);
   }
 
   // 워크스페이스 멤버 조회 및 권한 체크
