@@ -25,8 +25,6 @@ import { ParseWorkspaceSlugPipe } from './pipes/parse-workspace-slug.pipe';
 import { WorkspacesService } from './workspace.service';
 
 import { FileUploadCompletionRequest } from '@/common/file/dto/file-upload-completion-request.dto';
-import { FileUploadRequest } from '@/common/file/dto/file-upload-request.dto';
-import { FileUploadUrlResponse } from '@/common/file/dto/file-upload-url-response.dto';
 import type { AuthenticatedUser } from '@/types/auth/auth.type';
 
 @Controller('api/v1/workspaces')
@@ -42,15 +40,6 @@ export class WorkspacesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WorkspaceResponse> {
     return this.workspacesService.createWorkspace(dto, user.userId);
-  }
-
-  @Post('logo/presigned-url')
-  @UseGuards(JwtAuthGuard)
-  async requestLogoPresignedUrl(
-    @Body() dto: FileUploadRequest,
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<FileUploadUrlResponse> {
-    return this.workspacesService.requestLogoPresignedUrl(dto, user.userId);
   }
 
   @Get()
