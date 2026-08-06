@@ -86,10 +86,10 @@ export class WorkspacesController {
     return this.workspacesService.restoreWorkspace(workspaceId, user.userId);
   }
 
-  @Patch(':workspace_id/logo')
+  @Patch(':workspace_slug/logo')
   @UseGuards(JwtAuthGuard)
   async updateWorkspaceLogo(
-    @Param('workspace_id') workspaceId: string,
+    @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Body() dto: FileUploadCompletionRequest,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
