@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
 
 import {
   CreateWorkspaceRequest,
@@ -24,6 +25,7 @@ import { FileUploadCompletionRequest } from '@/common/file/dto/file-upload-compl
 import { FilesService } from '@/common/file/files.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import { userProfiles, workspaceMembers, workspaces } from '@/database/schema';
+import { PreparedUpload } from '@/types/file';
 
 @Injectable()
 export class WorkspacesService {
@@ -33,27 +35,47 @@ export class WorkspacesService {
   ) {}
 
   async createWorkspace(dto: CreateWorkspaceRequest, ownerId: string): Promise<WorkspaceResponse> {
-    // 로고가 있는 경우 presigned URL 검증 및 파일 이동 준비 (트랜잭션 보호 불가로 선행 처리)
-    const prepared = dto.uploadToken
-      ? await this.filesService.prepareUpload(ownerId, dto.uploadToken, ({ fileId, fileName }) =>
+    const workspaceId = uuidv7();
+
+    // 로고가 있는 경우 파일 이동 준비 (트랜잭션 보호 불가로 선행 처리)
+    let prepared: PreparedUpload | null = null;
+    if (dto.uploadToken) {
+      prepared = await this.filesService.prepareUpload(
+        ownerId,
+        dto.uploadToken,
+        (ctx) =>
           this.filesService.buildPermanentObjectKey(
-            `logos/workspaces`,
-            fileId,
-            this.filesService.extractExt(fileName),
+            `workspaces/${workspaceId}`,
+            ctx.fileId,
+            this.filesService.extractExt(ctx.fileName),
           ),
-        )
-      : null;
+        {
+          maxFileSize: 1024 * 1024 * 10, // 10MB
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        },
+      );
+    }
 
     try {
       const workspace = await this.db.transaction(async (tx) => {
+        let logoImageId: string | null = null;
+
+        if (prepared) {
+          logoImageId = await this.filesService.insertPreparedFile(tx, prepared, {
+            id: workspaceId,
+            workspaceId,
+          });
+        }
+
         const [created] = await tx
           .insert(workspaces)
           .values({
-            ownerId,
+            id: workspaceId,
+            ownerId: ownerId,
             slug: dto.slug,
             name: dto.name,
             description: dto.description,
-            logoImageId: null,
+            logoImageId,
           })
           .returning()
           .catch((e: { code: string }) => {
@@ -68,20 +90,6 @@ export class WorkspacesService {
           workspaceId: created.id,
           role: EWorkspaceUserRole.OWNER,
         });
-
-        if (prepared) {
-          const mediaId = await this.filesService.insertPreparedFile(tx, prepared, {
-            id: created.id,
-            workspaceId: created.id,
-          });
-
-          await tx
-            .update(workspaces)
-            .set({ logoImageId: mediaId })
-            .where(eq(workspaces.id, created.id));
-
-          return { ...created, logoImageId: mediaId };
-        }
 
         return created;
       });
@@ -178,7 +186,7 @@ export class WorkspacesService {
   ): Promise<WorkspaceResponse> {
     const member = await this.findMemberOrThrow(workspaceId, userId);
 
-    if (!canManage(member.role, EWorkspaceUserRole.MEMBER)) {
+    if (!canManage(member.role, EWorkspaceUserRole.ADMIN)) {
       throw new ForbiddenException('워크스페이스를 수정할 권한이 없습니다.');
     }
 
