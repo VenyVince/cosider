@@ -25,7 +25,7 @@ import { FileUploadCompletionRequest } from '@/common/file/dto/file-upload-compl
 import { FilesService } from '@/common/file/files.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
 import { userProfiles, workspaceMembers, workspaces } from '@/database/schema';
-import { PreparedUpload } from '@/types/file';
+import { FileContext, PreparedUpload } from '@/types/file';
 
 @Injectable()
 export class WorkspacesService {
@@ -309,24 +309,30 @@ export class WorkspacesService {
     const prepared = await this.filesService.prepareUpload(
       userId,
       dto.uploadToken,
-      ({ fileId, fileName }) =>
+      (ctx) =>
         this.filesService.buildPermanentObjectKey(
-          `logos/workspaces/${workspaceId}`,
-          fileId,
-          this.filesService.extractExt(fileName),
+          `workspaces/${workspaceId}`,
+          ctx.fileId,
+          this.filesService.extractExt(ctx.fileName),
         ),
+      {
+        maxFileSize: 1024 * 1024 * 10, // 10MB
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      },
     );
+
+    const context: FileContext = {
+      id: workspaceId,
+      workspaceId,
+    };
 
     try {
       await this.db.transaction(async (tx) => {
-        const mediaId = await this.filesService.insertPreparedFile(tx, prepared, {
-          id: workspaceId,
-          workspaceId,
-        });
+        await this.filesService.insertPreparedFile(tx, prepared, context);
 
         await tx
           .update(workspaces)
-          .set({ logoImageId: mediaId })
+          .set({ logoImageId: prepared.fileId })
           .where(eq(workspaces.id, workspaceId));
       });
 
