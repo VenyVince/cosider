@@ -21,26 +21,23 @@
     >
       <!-- 로고 및 헤더 -->
       <div class="mb-8 flex flex-col items-center text-center select-none">
-        <AppLogo class="mb-4 h-8 w-auto text-blue-600 dark:text-blue-500" />
+        <!-- 추후 로고 변경 -->
+        <AppLogo class="mb-4 h-12 w-auto text-blue-600 dark:text-blue-500" />
         <h2 class="text-xl font-bold tracking-tight text-neutral-950 dark:text-neutral-100">
-          Cosider에 로그인
+          Signin to Cosider
         </h2>
-        <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-          나만의 똑똑한 협업 워크스페이스
-        </p>
       </div>
 
       <!-- 로그인 폼 컴포넌트 -->
       <AuthSigninForm />
 
       <!-- 하단 안내 링크 -->
-      <div class="mt-6 text-center text-xs text-neutral-500 select-none dark:text-neutral-400">
-        아직 회원이 아니신가요?
+      <div class="mt-4">
         <NuxtLink
           to="/auth/signup"
           class="ml-1 cursor-pointer font-semibold text-blue-600 transition-all duration-200 hover:underline dark:text-blue-500"
         >
-          회원가입
+          Sign Up
         </NuxtLink>
       </div>
     </div>
