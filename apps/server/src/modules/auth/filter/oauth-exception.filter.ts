@@ -39,7 +39,7 @@ export class OAuthExceptionFilter implements ExceptionFilter {
       errorCode = responseBody;
     }
 
-    const redirectUrl = new URL(`${clientUrl}/login`);
+    const redirectUrl = new URL(`${clientUrl}/signin`);
     redirectUrl.searchParams.set('error', errorCode);
     if (providers) {
       redirectUrl.searchParams.set('providers', providers);

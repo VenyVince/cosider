@@ -94,7 +94,7 @@ export class AuthController {
   @Get('oauth/:provider')
   @UseGuards(OAuthGuard)
   @UseFilters(OAuthExceptionFilter)
-  oauthLogin(): void {}
+  oauthSignIn(): void {}
 
   @Get('oauth/:provider/callback')
   @UseGuards(OAuthGuard)
@@ -118,7 +118,7 @@ export class AuthController {
       );
     }
 
-    const tokens = await this.authService.loginOrRegisterOAuth(user);
+    const tokens = await this.authService.SignInOrSignUpOAuth(user);
     this.setNewAuthTokens(tokens, res);
 
     const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');

@@ -314,7 +314,7 @@ export class AuthService {
     await this.redis.del(redisKey);
   }
 
-  public async loginOrRegisterOAuth(profile: OAuthUserPayload): Promise<GeneratedAuthTokens> {
+  public async SignInOrSignUpOAuth(profile: OAuthUserPayload): Promise<GeneratedAuthTokens> {
     // credential이 nullable이 아닌 관계로 임시로 as string 처리
     // TODO: 추후 fix
     const { email, provider, providerId } = profile;
