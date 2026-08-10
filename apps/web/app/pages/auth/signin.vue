@@ -24,7 +24,7 @@
         <!-- 추후 로고 변경 -->
         <AppLogo class="mb-4 h-12 w-auto text-blue-600 dark:text-blue-500" />
         <h2 class="text-xl font-bold tracking-tight text-neutral-950 dark:text-neutral-100">
-          Signin to Cosider
+          Sign In to Cosider
         </h2>
       </div>
 
