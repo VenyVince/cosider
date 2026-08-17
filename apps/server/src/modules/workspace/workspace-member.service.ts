@@ -1,23 +1,36 @@
+import { randomBytes } from 'crypto';
+
 import { EWorkspaceUserRole } from '@cosider/shared';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
-import { DelegateOwnerRequest, UpdateMemberRoleRequest, WorkspaceMemberResponse } from './dto';
+import {
+  DelegateOwnerRequest,
+  MemberInvitationResponse,
+  MemberInviteRequest,
+  UpdateMemberRoleRequest,
+  WorkspaceMemberResponse,
+} from './dto';
 import { canManage, isOwner } from './utils/role.util';
 
 import { DB_CONNECTION } from '@/common/constants';
+import { MailService } from '@/common/mail/mail.service';
 import { type DrizzleDB } from '@/database/drizzle.module';
-import { userProfiles, workspaceMembers } from '@/database/schema';
+import { userProfiles, users, workspaceInvitations, workspaceMembers } from '@/database/schema';
 
 @Injectable()
 export class WorkspaceMembersService {
-  constructor(@Inject(DB_CONNECTION) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DB_CONNECTION) private readonly db: DrizzleDB,
+    private readonly mailService: MailService,
+  ) {}
 
   async getWorkspaceMemberList(
     workspaceId: string,
@@ -191,6 +204,210 @@ export class WorkspaceMembersService {
           ),
         );
     });
+  }
+
+  // Member Invitation methods
+  async inviteMember(
+    workspaceId: string,
+    dto: MemberInviteRequest,
+    userId: string,
+  ): Promise<MemberInvitationResponse> {
+    const actor = await this.findMemberOrThrow(workspaceId, userId);
+
+    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+      throw new ForbiddenException('멤버를 초대할 권한이 없습니다.');
+    }
+
+    const isEmail = dto.target.includes('@');
+    let targetUserId: string | null = null;
+
+    if (isEmail) {
+      const [user] = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, dto.target));
+
+      if (user) targetUserId = user.id;
+    } else {
+      const [profile] = await this.db
+        .select({ userId: userProfiles.userId })
+        .from(userProfiles)
+        .where(eq(userProfiles.handle, dto.target));
+
+      if (!profile) throw new NotFoundException('존재하지 않는 사용자입니다.');
+      targetUserId = profile.userId;
+    }
+
+    if (targetUserId) {
+      const [existing] = await this.db
+        .select({ id: workspaceMembers.id })
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, targetUserId),
+          ),
+        );
+
+      if (existing) throw new ConflictException('이미 워크스페이스에 소속된 멤버입니다.');
+    }
+
+    const [pending] = await this.db
+      .select({ id: workspaceInvitations.id })
+      .from(workspaceInvitations)
+      .where(
+        and(
+          eq(workspaceInvitations.workspaceId, workspaceId),
+          eq(workspaceInvitations.target, dto.target),
+          isNull(workspaceInvitations.acceptedAt),
+        ),
+      );
+
+    if (pending) throw new ConflictException('이미 대기 중인 초대가 있습니다.');
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+    const [invitation] = await this.db
+      .insert(workspaceInvitations)
+      .values({
+        workspaceId,
+        inviterId: userId,
+        target: dto.target,
+        token,
+        role: dto.role,
+        expiresAt,
+      })
+      .returning();
+
+    const [inviter] = await this.db
+      .select({
+        userId: userProfiles.userId,
+        handle: userProfiles.handle,
+        nickname: userProfiles.nickname,
+        profileImageId: userProfiles.profileImageId,
+        updatedAt: userProfiles.updatedAt,
+        handleUpdatedAt: userProfiles.handleUpdatedAt,
+      })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId));
+
+    const targetEmail = isEmail
+      ? dto.target
+      : targetUserId
+        ? await this.db
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, targetUserId))
+            .then(([u]) => u?.email)
+        : null;
+
+    if (targetEmail) {
+      await this.mailService.sendInvitationMail(targetEmail, token);
+    }
+
+    return new MemberInvitationResponse({
+      inviter: {
+        userId: inviter.userId!,
+        handle: inviter.handle,
+        nickname: inviter.nickname,
+        profileImageId: inviter.profileImageId,
+        updatedAt: inviter.updatedAt?.toISOString() ?? null,
+        handleUpdatedAt: inviter.handleUpdatedAt?.toISOString() ?? null,
+      },
+      target: invitation.target,
+      role: invitation.role,
+      token: invitation.token,
+      createdAt: invitation.createdAt.toISOString(),
+      expiresAt: invitation.expiresAt.toISOString(),
+      acceptedAt: invitation.acceptedAt?.toISOString() ?? null,
+    });
+  }
+
+  async getInvitationList(
+    workspaceId: string,
+    userId: string,
+  ): Promise<MemberInvitationResponse[]> {
+    const actor = await this.findMemberOrThrow(workspaceId, userId);
+
+    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+      throw new ForbiddenException('초대 목록을 조회할 권한이 없습니다.');
+    }
+
+    const invitations = await this.db
+      .select({
+        target: workspaceInvitations.target,
+        role: workspaceInvitations.role,
+        token: workspaceInvitations.token,
+        createdAt: workspaceInvitations.createdAt,
+        expiresAt: workspaceInvitations.expiresAt,
+        acceptedAt: workspaceInvitations.acceptedAt,
+        inviterUserId: userProfiles.userId,
+        inviterHandle: userProfiles.handle,
+        inviterNickname: userProfiles.nickname,
+        inviterProfileImageId: userProfiles.profileImageId,
+        inviterUpdatedAt: userProfiles.updatedAt,
+        inviterHandleUpdatedAt: userProfiles.handleUpdatedAt,
+      })
+      .from(workspaceInvitations)
+      .innerJoin(userProfiles, eq(workspaceInvitations.inviterId, userProfiles.userId))
+      .where(
+        and(
+          eq(workspaceInvitations.workspaceId, actor.workspaceId),
+          isNull(workspaceInvitations.acceptedAt),
+        ),
+      );
+
+    return invitations.map(
+      (inv) =>
+        new MemberInvitationResponse({
+          inviter: {
+            userId: inv.inviterUserId!,
+            handle: inv.inviterHandle,
+            nickname: inv.inviterNickname,
+            profileImageId: inv.inviterProfileImageId,
+            updatedAt: inv.inviterUpdatedAt?.toISOString() ?? null,
+            handleUpdatedAt: inv.inviterHandleUpdatedAt?.toISOString() ?? null,
+          },
+          target: inv.target,
+          role: inv.role,
+          token: inv.token,
+          createdAt: inv.createdAt.toISOString(),
+          expiresAt: inv.expiresAt.toISOString(),
+          acceptedAt: inv.acceptedAt?.toISOString() ?? null,
+        }),
+    );
+  }
+
+  async cancelMemberInvitation(
+    workspaceId: string,
+    invitationId: string,
+    userId: string,
+  ): Promise<void> {
+    const actor = await this.findMemberOrThrow(workspaceId, userId);
+
+    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+      throw new ForbiddenException('초대를 취소할 권한이 없습니다.');
+    }
+
+    const [invitation] = await this.db
+      .select({ id: workspaceInvitations.id })
+      .from(workspaceInvitations)
+      .where(
+        and(
+          eq(workspaceInvitations.id, invitationId),
+          eq(workspaceInvitations.workspaceId, actor.workspaceId),
+        ),
+      );
+
+    if (!invitation) {
+      throw new NotFoundException('존재하지 않는 초대입니다.');
+    }
+
+    await this.db
+      .update(workspaceInvitations)
+      .set({ expiresAt: new Date() })
+      .where(eq(workspaceInvitations.id, invitationId));
   }
 
   // Helper methods
