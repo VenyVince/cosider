@@ -9,7 +9,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 
 import {
   DelegateOwnerRequest,
@@ -355,6 +355,7 @@ export class WorkspaceMembersService {
         and(
           eq(workspaceInvitations.workspaceId, actor.workspaceId),
           isNull(workspaceInvitations.acceptedAt),
+          gt(workspaceInvitations.expiresAt, new Date()), // 만료 안 된 것만
         ),
       );
 
