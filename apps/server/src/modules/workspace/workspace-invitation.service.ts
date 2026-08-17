@@ -17,39 +17,12 @@ export class WorkspaceInvitationsService {
   constructor(@Inject(DB_CONNECTION) private readonly db: DrizzleDB) {}
 
   async checkInvitation(token: string): Promise<void> {
-    const [invitation] = await this.db
-      .select()
-      .from(workspaceInvitations)
-      .where(eq(workspaceInvitations.token, token));
-
-    if (!invitation) throw new NotFoundException('존재하지 않는 초대입니다.');
-
-    if (invitation.expiresAt < new Date()) {
-      throw new GoneException('만료된 초대 링크입니다.');
-    }
-
-    if (invitation.acceptedAt) {
-      throw new GoneException('이미 수락된 초대입니다.');
-    }
+    await this.findValidInvitationOrThrow(token);
   }
 
   async acceptInvitation(token: string, user: AuthenticatedUser): Promise<void> {
-    const [invitation] = await this.db
-      .select()
-      .from(workspaceInvitations)
-      .where(eq(workspaceInvitations.token, token));
+    const invitation = await this.findValidInvitationOrThrow(token);
 
-    if (!invitation) throw new NotFoundException('존재하지 않는 초대입니다.');
-
-    if (invitation.expiresAt < new Date()) {
-      throw new GoneException('만료된 초대 링크입니다.');
-    }
-
-    if (invitation.acceptedAt) {
-      throw new GoneException('이미 수락된 초대입니다.');
-    }
-
-    // target이 이메일인지 handle인지 확인 후 본인 검증
     const isEmail = invitation.target.includes('@');
 
     if (isEmail) {
@@ -85,5 +58,25 @@ export class WorkspaceInvitationsService {
         .set({ acceptedAt: new Date() })
         .where(eq(workspaceInvitations.token, token));
     });
+  }
+
+  // Helper Methods
+  private async findValidInvitationOrThrow(token: string) {
+    const [invitation] = await this.db
+      .select()
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.token, token));
+
+    if (!invitation) throw new NotFoundException('존재하지 않는 초대입니다.');
+
+    if (invitation.expiresAt < new Date()) {
+      throw new GoneException('만료된 초대 링크입니다.');
+    }
+
+    if (invitation.acceptedAt) {
+      throw new GoneException('이미 수락된 초대입니다.');
+    }
+
+    return invitation;
   }
 }
