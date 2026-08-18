@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Inject,
   Injectable,
   NotFoundException,
@@ -392,7 +393,7 @@ export class WorkspaceMembersService {
     }
 
     const [invitation] = await this.db
-      .select({ id: workspaceInvitations.id })
+      .select({ id: workspaceInvitations.id, expiresAt: workspaceInvitations.expiresAt })
       .from(workspaceInvitations)
       .where(
         and(
@@ -403,6 +404,10 @@ export class WorkspaceMembersService {
 
     if (!invitation) {
       throw new NotFoundException('존재하지 않는 초대입니다.');
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      throw new GoneException('이미 만료된 초대입니다.');
     }
 
     await this.db
