@@ -95,6 +95,7 @@ export class WorkspaceMembersController {
   // Workspace Invitation Apis
   @Post(':workspace_slug/invitations')
   @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
   async inviteMember(
     @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
     @Body() dto: MemberInviteRequest,
