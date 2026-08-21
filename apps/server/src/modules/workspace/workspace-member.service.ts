@@ -345,7 +345,8 @@ export class WorkspaceMembersService {
   ): Promise<MemberInvitationResponse[]> {
     const actor = await this.findMemberOrThrow(workspaceId, userId);
 
-    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+    // MEMBER보다 높은 권한(ADMIN, OWNER)만 초대 목록 조회 가능
+    if (!canManage(actor.role, EWorkspaceUserRole.MEMBER)) {
       throw new ForbiddenException('초대 목록을 조회할 권한이 없습니다.');
     }
 
@@ -402,7 +403,8 @@ export class WorkspaceMembersService {
   ): Promise<void> {
     const actor = await this.findMemberOrThrow(workspaceId, userId);
 
-    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+    // MEMBER보다 높은 권한(ADMIN, OWNER)만 초대 취소 가능
+    if (!canManage(actor.role, EWorkspaceUserRole.MEMBER)) {
       throw new ForbiddenException('초대를 취소할 권한이 없습니다.');
     }
 
