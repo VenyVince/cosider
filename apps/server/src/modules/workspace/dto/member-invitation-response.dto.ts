@@ -15,9 +15,6 @@ export class MemberInvitationResponse implements IMemberInvitationResponse {
   role!: EWorkspaceUserRole;
 
   @Expose()
-  token!: string;
-
-  @Expose()
   createdAt!: string;
 
   @Expose()
