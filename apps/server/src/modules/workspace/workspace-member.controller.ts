@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
@@ -118,7 +119,7 @@ export class WorkspaceMembersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async cancelMemberInvitation(
     @Param('workspace_slug', ParseWorkspaceSlugPipe) workspaceId: string,
-    @Param('invitation_id') invitationId: string,
+    @Param('invitation_id', ParseUUIDPipe) invitationId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
     return this.workspaceMembersService.cancelMemberInvitation(
