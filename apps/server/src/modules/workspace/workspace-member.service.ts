@@ -215,8 +215,14 @@ export class WorkspaceMembersService {
   ): Promise<MemberInvitationResponse> {
     const actor = await this.findMemberOrThrow(workspaceId, userId);
 
-    if (!canManage(actor.role, EWorkspaceUserRole.ADMIN)) {
+    // MEMBER보다 높은 권한(ADMIN, OWNER)만 멤버 초대 가능
+    if (!canManage(actor.role, EWorkspaceUserRole.MEMBER)) {
       throw new ForbiddenException('멤버를 초대할 권한이 없습니다.');
+    }
+
+    // OWNER 역할로는 초대할 수 없도록 제한
+    if (dto.role === EWorkspaceUserRole.OWNER) {
+      throw new ForbiddenException('OWNER 역할로는 초대할 수 없습니다.');
     }
 
     const isEmail = dto.target.includes('@');
@@ -261,6 +267,7 @@ export class WorkspaceMembersService {
           eq(workspaceInvitations.workspaceId, workspaceId),
           eq(workspaceInvitations.target, dto.target),
           isNull(workspaceInvitations.acceptedAt),
+          gt(workspaceInvitations.expiresAt, new Date()),
         ),
       );
 
@@ -308,6 +315,7 @@ export class WorkspaceMembersService {
     }
 
     return new MemberInvitationResponse({
+      id: invitation.id,
       inviter: {
         userId: inviter.userId!,
         handle: inviter.handle,
@@ -318,7 +326,6 @@ export class WorkspaceMembersService {
       },
       target: invitation.target,
       role: invitation.role,
-      token: invitation.token,
       createdAt: invitation.createdAt.toISOString(),
       expiresAt: invitation.expiresAt.toISOString(),
       acceptedAt: invitation.acceptedAt?.toISOString() ?? null,
@@ -337,9 +344,9 @@ export class WorkspaceMembersService {
 
     const invitations = await this.db
       .select({
+        id: workspaceInvitations.id,
         target: workspaceInvitations.target,
         role: workspaceInvitations.role,
-        token: workspaceInvitations.token,
         createdAt: workspaceInvitations.createdAt,
         expiresAt: workspaceInvitations.expiresAt,
         acceptedAt: workspaceInvitations.acceptedAt,
@@ -363,6 +370,7 @@ export class WorkspaceMembersService {
     return invitations.map(
       (inv) =>
         new MemberInvitationResponse({
+          id: inv.id,
           inviter: {
             userId: inv.inviterUserId!,
             handle: inv.inviterHandle,
@@ -373,7 +381,6 @@ export class WorkspaceMembersService {
           },
           target: inv.target,
           role: inv.role,
-          token: inv.token,
           createdAt: inv.createdAt.toISOString(),
           expiresAt: inv.expiresAt.toISOString(),
           acceptedAt: inv.acceptedAt?.toISOString() ?? null,
