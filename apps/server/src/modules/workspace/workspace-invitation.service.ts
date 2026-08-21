@@ -4,8 +4,9 @@ import {
   NotFoundException,
   GoneException,
   UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { DB_CONNECTION } from '@/common/constants';
 import { type DrizzleDB } from '@/database/drizzle.module';
@@ -22,6 +23,19 @@ export class WorkspaceInvitationsService {
 
   async acceptInvitation(token: string, user: AuthenticatedUser): Promise<void> {
     const invitation = await this.findValidInvitationOrThrow(token);
+
+    // 이미 워크스페이스에 소속된 멤버인지 확인
+    const [existingMember] = await this.db
+      .select({ id: workspaceMembers.id })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, invitation.workspaceId!),
+          eq(workspaceMembers.userId, user.userId),
+        ),
+      );
+
+    if (existingMember) throw new ConflictException('이미 워크스페이스에 소속된 멤버입니다.');
 
     const isEmail = invitation.target.includes('@');
 
