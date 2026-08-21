@@ -3,6 +3,9 @@ import { Expose } from 'class-transformer';
 
 export class MemberInvitationResponse implements IMemberInvitationResponse {
   @Expose()
+  id!: string;
+
+  @Expose()
   inviter!: IMemberInvitationResponse['inviter'];
 
   @Expose()

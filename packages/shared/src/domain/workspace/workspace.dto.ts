@@ -51,10 +51,10 @@ export interface IDelegateOwnerRequest {
 export type IMemberInviteRequest = Pick<IWorkspaceInvitation, 'target' | 'role'>;
 
 export interface IMemberInvitationResponse extends IMemberInviteRequest {
+  id: string;
   inviter: Omit<IUserProfileDetailResponse, 'email' | 'techStacks' | 'jobRole'> & {
     userId: string;
   };
-  token: string;
   createdAt: string;
   expiresAt: string;
   acceptedAt: string | null;
