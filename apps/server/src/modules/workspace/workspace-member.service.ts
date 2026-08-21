@@ -311,7 +311,14 @@ export class WorkspaceMembersService {
         : null;
 
     if (targetEmail) {
-      await this.mailService.sendInvitationMail(targetEmail, token);
+      try {
+        await this.mailService.sendInvitationMail(targetEmail, token);
+      } catch (error) {
+        await this.db
+          .delete(workspaceInvitations)
+          .where(eq(workspaceInvitations.id, invitation.id));
+        throw error;
+      }
     }
 
     return new MemberInvitationResponse({
