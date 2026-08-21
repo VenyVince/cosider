@@ -91,6 +91,10 @@ export class WorkspaceInvitationsService {
       throw new GoneException('이미 수락된 초대입니다.');
     }
 
+    if (!invitation.workspaceId) {
+      throw new GoneException('유효하지 않은 초대입니다.');
+    }
+
     return invitation;
   }
 }
