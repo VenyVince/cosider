@@ -20,8 +20,9 @@
   // 이메일 유효성 검사 정규식
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  // 비밀번호 강도 검사 (최소 8자, 소문자 1개, 숫자 1개, 특수문자 1개 포함)
-  const passwordRegex = /^(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+  // 서버의 isStrongPassword 기본 정책과 동일하게 검사
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[-#!$@£%^&*()_+|~=`{}\[\]:";'<>?,.\/\\ ]).{8,}$/;
 
   function validate(state: typeof form): FormError[] {
     const errors: FormError[] = [];
@@ -39,7 +40,7 @@
     } else if (!passwordRegex.test(state.password)) {
       errors.push({
         name: 'password',
-        message: '비밀번호는 영문 소문자, 숫자, 특수문자를 포함하여 8자 이상이어야 합니다.',
+        message: '비밀번호는 영문 대문자, 소문자, 숫자, 특수문자를 포함하여 8자 이상이어야 합니다.',
       });
     }
 
@@ -141,7 +142,7 @@
         <UFormField label="비밀번호" name="password" required>
           <template #help>
             <span class="text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
-              영문 소문자, 숫자, 특수문자를 모두 포함하여 8자 이상이어야 합니다.
+              영문 대문자, 소문자, 숫자, 특수문자를 모두 포함하여 8자 이상이어야 합니다.
             </span>
           </template>
           <UInput
