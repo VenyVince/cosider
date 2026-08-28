@@ -4,6 +4,9 @@ import pluginImport from 'eslint-plugin-import-x';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import pluginPromise from 'eslint-plugin-promise';
 import pluginUnicorn from 'eslint-plugin-unicorn';
+import pluginVue from 'eslint-plugin-vue';
+import tseslint from 'typescript-eslint';
+import vueParser from 'vue-eslint-parser';
 
 const promisePlugin = /** @type {any} */ (pluginPromise);
 
@@ -11,6 +14,7 @@ const promisePlugin = /** @type {any} */ (pluginPromise);
  * @type {import('eslint').Linter.Config[]}
  */
 export const nuxtConfig = [
+  ...tseslint.configs.recommended,
   {
     plugins: {
       import: pluginImport,
@@ -57,6 +61,15 @@ export const nuxtConfig = [
   },
   {
     files: ['**/*.vue'],
+    languageOptions: {
+      parser: vueParser,
+      parserOptions: {
+        parser: tseslint.parser,
+      },
+    },
+    plugins: {
+      vue: pluginVue,
+    },
     rules: {
       'vue/attributes-order': [
         'warn',

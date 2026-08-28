@@ -14,7 +14,14 @@ export function useAuth() {
       const data = await $api<IAuthUserResponse>(`/api/v1/users/me`);
       user.value = data;
       return user.value;
-    } catch {
+    } catch (error: unknown) {
+      const status = (error as { statusCode?: number })?.statusCode;
+
+      if (status === 404) {
+        user.value = null;
+        return null;
+      }
+
       clearAuth();
       return null;
     }
@@ -26,9 +33,13 @@ export function useAuth() {
       body: credential,
     });
     const userData = await fetchUser();
+
     if (!userData) {
-      throw new Error('로그인 후 사용자 정보를 불러오지 못했습니다.');
+      await navigateTo('/settings/profile/create');
+      return;
     }
+
+    await navigateTo('/settings/profile');
   }
 
   async function signInWithOAuth(provider: OAuthProvider) {

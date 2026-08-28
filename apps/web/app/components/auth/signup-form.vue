@@ -24,6 +24,14 @@
   const passwordRegex =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[-#!$@£%^&*()_+|~=`{}\[\]:";'<>?,.\/\\ ]).{8,}$/;
 
+  type ApiError = {
+    data?: {
+      errorCode?: string;
+      message?: string;
+    };
+    message?: string;
+  };
+
   function validate(state: typeof form): FormError[] {
     const errors: FormError[] = [];
 
@@ -64,11 +72,12 @@
       });
       submittedEmail.value = event.data.email;
       isSubmitted.value = true;
-    } catch (error: any) {
-      const errorMsg = error?.data?.message || error?.message || '회원가입에 실패했습니다.';
-      if (error?.data?.errorCode === 'ACCOUNT_ALREADY_EXISTS') {
+    } catch (error: unknown) {
+      const apiError = error as ApiError;
+      const errorMsg = apiError.data?.message || apiError.message || '회원가입에 실패했습니다.';
+      if (apiError.data?.errorCode === 'ACCOUNT_ALREADY_EXISTS') {
         errorMessage.value = '이미 등록된 이메일 주소입니다.';
-      } else if (error?.data?.errorCode === 'REQUIRE_SOCIAL_LINKING') {
+      } else if (apiError.data?.errorCode === 'REQUIRE_SOCIAL_LINKING') {
         errorMessage.value = '이미 소셜 로그인으로 가입된 계정입니다. 소셜 로그인을 이용해 주세요.';
       } else {
         errorMessage.value = errorMsg;
@@ -98,6 +107,7 @@
         주소로 인증 링크를 발송했습니다. 메일함의 링크를 클릭하여 인증을 마쳐주세요.
       </p>
       <UButton
+        type="button"
         to="/auth/signin"
         color="neutral"
         variant="outline"
@@ -157,6 +167,7 @@
           >
             <template #trailing>
               <UButton
+                type="button"
                 color="neutral"
                 variant="ghost"
                 :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
