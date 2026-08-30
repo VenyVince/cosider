@@ -1,4 +1,8 @@
 <script setup lang="ts">
+  definePageMeta({
+    layout: 'landing',
+  });
+
   useSeoMeta({
     title: '이메일 인증 - Cosider',
     description: '이메일 인증을 진행하여 Cosider 서비스 가입을 완료해 주세요.',

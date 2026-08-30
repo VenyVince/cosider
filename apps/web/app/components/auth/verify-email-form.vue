@@ -2,11 +2,49 @@
   const route = useRoute();
   const { $api } = useNuxtApp();
 
-  const token = computed(() => route.query.token as string);
+  const token = computed(() => {
+    const raw = route.query.token;
+    if (Array.isArray(raw)) return raw[0] ?? '';
+    return typeof raw === 'string' ? raw : '';
+  });
 
   type VerifyStatus = 'idle' | 'verifying' | 'success' | 'error';
   const status = ref<VerifyStatus>('idle');
   const errorMessage = ref<string | null>(null);
+
+  type ApiError = {
+    data?: {
+      errorCode?: string;
+      message?: string;
+    };
+    message?: string;
+  };
+
+  const VERIFY_ERROR_MESSAGES: Record<string, string> = {
+    INVALID_TOKEN: '만료되었거나 유효하지 않은 인증 토큰입니다.',
+    ERR_INVALID_TOKEN: '만료되었거나 유효하지 않은 인증 토큰입니다.',
+    ALREADY_REGISTERED: '이미 인증이 완료된 계정입니다. 로그인 페이지로 이동하여 로그인해 주세요.',
+    ERR_ALREADY_REGISTERED:
+      '이미 인증이 완료된 계정입니다. 로그인 페이지로 이동하여 로그인해 주세요.',
+    INVALID_EMAIL: '인증 메일이 만료되었습니다. 다시 가입해 주세요.',
+    ERR_INVALID_EMAIL: '인증 메일이 만료되었습니다. 다시 가입해 주세요.',
+  };
+
+  function resolveVerifyErrorMessage(error: unknown): string {
+    const apiError = error as ApiError;
+    const errorCode = apiError.data?.errorCode;
+    const errorMsg = apiError.data?.message ?? apiError.message;
+
+    if (errorCode && VERIFY_ERROR_MESSAGES[errorCode]) {
+      return VERIFY_ERROR_MESSAGES[errorCode];
+    }
+
+    if (errorMsg && VERIFY_ERROR_MESSAGES[errorMsg]) {
+      return VERIFY_ERROR_MESSAGES[errorMsg];
+    }
+
+    return errorMsg || '이메일 인증에 실패했습니다.';
+  }
 
   async function verify() {
     if (!token.value) {
@@ -22,17 +60,9 @@
         body: { token: token.value },
       });
       status.value = 'success';
-    } catch (error: any) {
+    } catch (error: unknown) {
       status.value = 'error';
-      const errorMsg = error?.data?.message || error?.message || '이메일 인증에 실패했습니다.';
-      if (error?.data?.errorCode === 'INVALID_TOKEN') {
-        errorMessage.value = '만료되었거나 유효하지 않은 인증 토큰입니다.';
-      } else if (error?.data?.errorCode === 'ALREADY_REGISTERED') {
-        errorMessage.value =
-          '이미 인증이 완료된 계정입니다. 로그인 페이지로 이동하여 로그인해 주세요.';
-      } else {
-        errorMessage.value = errorMsg;
-      }
+      errorMessage.value = resolveVerifyErrorMessage(error);
     }
   }
 

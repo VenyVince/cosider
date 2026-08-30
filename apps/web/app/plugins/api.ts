@@ -39,7 +39,13 @@ export default defineNuxtPlugin((nuxtApp) => {
             const { clearAuth } = useAuth();
             clearAuth();
           });
-          return Promise.reject(response);
+          return Promise.reject(
+            createError({
+              statusCode: response.status,
+              data: response._data,
+              message: response._data?.message,
+            }),
+          );
         }
 
         // 만약 앞의 요청에서 401로 인해 토큰 갱신 중이면

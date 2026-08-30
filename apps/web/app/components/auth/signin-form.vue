@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import type { IAuthorizeDto } from '@cosider/shared';
+  import { EUserStatus, type IAuthorizeDto } from '@cosider/shared';
   import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 
   const { signInWithLocal, signInWithOAuth } = useAuth();
@@ -12,6 +12,44 @@
   const showPassword = ref(false);
   const isLoading = ref(false);
   const errorMessage = ref<string | null>(null);
+
+  type ApiError = {
+    data?: {
+      errorCode?: string;
+      message?: string;
+    };
+    message?: string;
+  };
+
+  // 서버는 errorCode에 EUserStatus, message에 ERR_* 를 넣는다. 둘 다 매핑한다.
+  const SIGN_IN_ERROR_MESSAGES: Record<string, string> = {
+    [EUserStatus.BANNED]: '정지된 계정입니다.',
+    ERR_BANNED_ACCOUNT: '정지된 계정입니다.',
+    [EUserStatus.INACTIVE]: '비활성화된 계정입니다.',
+    ERR_INACTIVE_ACCOUNT: '비활성화된 계정입니다.',
+    [EUserStatus.PENDING]: '이메일 인증이 완료되지 않은 계정입니다.',
+    ERR_PENDING_ACCOUNT: '이메일 인증이 완료되지 않은 계정입니다.',
+    [EUserStatus.PENDING_LEAVE]: '탈퇴 진행 중인 계정입니다.',
+    ERR_PENDING_LEAVE_ACCOUNT: '탈퇴 진행 중인 계정입니다.',
+    [EUserStatus.LEAVED]: '탈퇴 완료된 계정입니다.',
+    ERR_LEAVED_ACCOUNT: '탈퇴 완료된 계정입니다.',
+  };
+
+  function resolveSignInErrorMessage(error: unknown): string {
+    const apiError = error as ApiError;
+    const errorCode = apiError.data?.errorCode;
+    const errorMsg = apiError.data?.message ?? apiError.message;
+
+    if (errorCode && SIGN_IN_ERROR_MESSAGES[errorCode]) {
+      return SIGN_IN_ERROR_MESSAGES[errorCode];
+    }
+
+    if (errorMsg && SIGN_IN_ERROR_MESSAGES[errorMsg]) {
+      return SIGN_IN_ERROR_MESSAGES[errorMsg];
+    }
+
+    return '이메일 또는 비밀번호가 올바르지 않습니다.';
+  }
 
   // 이메일 유효성 검사 정규식
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,22 +78,10 @@
     errorMessage.value = null;
     try {
       await signInWithLocal(event.data);
-      // 로그인 성공 시 루트 페이지로 리다이렉트
-      navigateTo('/');
-    } catch (error: any) {
-      // 에러 코드나 메시지에 따라 알맞게 노출
-      const errorMsg = error?.data?.message || error?.message || '로그인에 실패했습니다.';
-      if (errorMsg === 'ERR_PENDING_LEAVE_ACCOUNT') {
-        errorMessage.value = '탈퇴 진행 중인 계정입니다.';
-      } else if (errorMsg === 'ERR_LEAVED_ACCOUNT') {
-        errorMessage.value = '탈퇴 완료된 계정입니다.';
-      } else if (errorMsg === 'ERR_BANNED_ACCOUNT') {
-        errorMessage.value = '정지된 계정입니다.';
-      } else if (errorMsg === 'ERR_INACTIVE_ACCOUNT') {
-        errorMessage.value = '비활성화된 계정입니다.';
-      } else {
-        errorMessage.value = '이메일 또는 비밀번호가 올바르지 않습니다.';
-      }
+      // 여기서 루트 페이지로 리다이렉트하면 Profile이 있는지 여부와 관계없이 강제로 루트 페이지로 이동합니다.
+      // 로그인 시 가야할 대시보드가 아니라 Landing 페이지로 가버리기 때문에, 여기서 루트 페이지로 리다이렉트하면 안 됩니다.
+    } catch (error: unknown) {
+      errorMessage.value = resolveSignInErrorMessage(error);
     } finally {
       isLoading.value = false;
     }
@@ -111,6 +137,7 @@
         >
           <template #trailing>
             <UButton
+              type="button"
               color="neutral"
               variant="ghost"
               :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
@@ -137,9 +164,9 @@
 
     <!-- 구분선 -->
     <div class="relative flex items-center py-2">
-      <div class="flex-grow border-t border-neutral-800"></div>
-      <span class="mx-4 flex-shrink text-xs font-medium text-neutral-400 select-none">또는</span>
-      <div class="flex-grow border-t border-neutral-800"></div>
+      <div class="grow border-t border-neutral-800"></div>
+      <span class="mx-4 shrink text-xs font-medium text-neutral-400 select-none">또는</span>
+      <div class="grow border-t border-neutral-800"></div>
     </div>
 
     <!-- 소셜 로그인 버튼 -->

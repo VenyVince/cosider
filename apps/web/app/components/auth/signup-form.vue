@@ -193,6 +193,7 @@
           >
             <template #trailing>
               <UButton
+                type="button"
                 color="neutral"
                 variant="ghost"
                 :icon="showPasswordConfirm ? 'i-lucide-eye-off' : 'i-lucide-eye'"

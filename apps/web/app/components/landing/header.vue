@@ -63,8 +63,8 @@
         variant="ghost"
       />
 
-      <UButton to="/auth/login" color="neutral" variant="ghost" class="hidden sm:inline-flex">
-        Login
+      <UButton to="/auth/signin" color="neutral" variant="ghost" class="hidden sm:inline-flex">
+        Sign in
       </UButton>
       <UButton to="/auth/signup" color="primary"> Get started </UButton>
     </template>
@@ -81,7 +81,7 @@
       />
       <USeparator class="my-4" />
       <div class="flex flex-col gap-2">
-        <UButton to="/auth/login" color="neutral" variant="ghost" block> Login </UButton>
+        <UButton to="/auth/signin" color="neutral" variant="ghost" block> Sign in </UButton>
         <UButton to="/auth/signup" color="primary" block> Get started </UButton>
       </div>
     </template>

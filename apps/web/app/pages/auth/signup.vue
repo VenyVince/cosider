@@ -1,14 +1,13 @@
 <script setup lang="ts">
+  definePageMeta({
+    layout: 'landing',
+    middleware: 'guest',
+  });
+
   useSeoMeta({
     title: '회원가입 - Cosider',
     description: 'Cosider 서비스의 일원이 되어 나만의 스마트 워크스페이스를 경험해 보세요.',
   });
-
-  // 이미 로그인된 사용자는 메인 화면으로 리다이렉트
-  const { isAuthenticated } = useAuth();
-  if (isAuthenticated.value) {
-    navigateTo('/');
-  }
 </script>
 
 <template>
