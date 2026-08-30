@@ -49,5 +49,5 @@
       <UAvatar :alt="displayName" size="sm" :text="initial" />
     </UButton>
   </UDropdownMenu>
-  <UButton v-else to="/auth/login" color="neutral" variant="ghost" size="sm"> Login </UButton>
+  <UButton v-else to="/auth/signin" color="neutral" variant="ghost" size="sm">Sign in</UButton>
 </template>
